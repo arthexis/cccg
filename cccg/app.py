@@ -28,6 +28,10 @@ class CardGameApp:
         self.dragged_object: GameObject | None = None
         self.drag_offset = pygame.Vector2()
         self.drag_scale = 1.15
+        self.zoom = 1.0
+        self.min_zoom = 0.25
+        self.max_zoom = 2.0
+        self.world_size = pygame.Vector2()
 
     def setup(self) -> None:
         """Initialise pygame and the display surface."""
@@ -50,6 +54,7 @@ class CardGameApp:
         pygame.display.set_caption(display.caption)
         self.clock = pygame.time.Clock()
         self.running = True
+        self.world_size = pygame.Vector2(self.screen.get_size())
         self._create_initial_objects()
 
     def handle_events(self) -> None:
@@ -59,15 +64,18 @@ class CardGameApp:
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                self._begin_drag(pygame.Vector2(event.pos))
+                self._begin_drag(self._screen_to_world(pygame.Vector2(event.pos)))
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                self._end_drag(pygame.Vector2(event.pos))
+                self._end_drag(self._screen_to_world(pygame.Vector2(event.pos)))
+            elif event.type == pygame.MOUSEWHEEL:
+                self._adjust_zoom(event.y)
 
     def update(self, dt: float) -> None:  # noqa: D401 - placeholder hook
         """Advance the game state by *dt* seconds."""
 
         if self.dragged_object is not None:
-            self._drag_object(pygame.Vector2(pygame.mouse.get_pos()))
+            pointer = self._screen_to_world(pygame.Vector2(pygame.mouse.get_pos()))
+            self._drag_object(pointer)
 
     def draw(self) -> None:
         """Render the current frame."""
@@ -77,7 +85,7 @@ class CardGameApp:
         if self.dragged_object is not None:
             self._draw_grid(self.screen)
         for obj in self.objects:
-            obj.draw(self.screen)
+            self._draw_object(self.screen, obj)
         pygame.display.flip()
 
     # Internal helpers -------------------------------------------------
@@ -98,7 +106,7 @@ class CardGameApp:
 
         for index in range(len(self.objects) - 1, -1, -1):
             candidate = self.objects[index]
-            if candidate.rect.collidepoint(pointer):
+            if candidate.rect.collidepoint(pointer.x, pointer.y):
                 self.dragged_object = candidate
                 self.drag_offset = pointer - pygame.Vector2(candidate.rect.topleft)
                 # bring to front for rendering
@@ -134,7 +142,8 @@ class CardGameApp:
         """Return the drawable grid rect and its column/row counts."""
 
         assert self.screen is not None
-        width, height = self.screen.get_size()
+        width = int(self.world_size.x) if self.world_size.x else self.screen.get_width()
+        height = int(self.world_size.y) if self.world_size.y else self.screen.get_height()
         cell = self.GRID_CELL_SIZE
         margin = self.GRID_MARGIN
 
@@ -161,21 +170,15 @@ class CardGameApp:
 
         for col in range(columns + 1):
             x = grid_rect.left + col * self.GRID_CELL_SIZE
-            self._draw_dashed_line(
-                grid_surface,
-                color,
-                (x, grid_rect.top),
-                (x, grid_rect.bottom),
-            )
+            start = pygame.Vector2(x, grid_rect.top)
+            end = pygame.Vector2(x, grid_rect.bottom)
+            self._draw_dashed_line(grid_surface, color, start, end)
 
         for row in range(rows + 1):
             y = grid_rect.top + row * self.GRID_CELL_SIZE
-            self._draw_dashed_line(
-                grid_surface,
-                color,
-                (grid_rect.left, y),
-                (grid_rect.right, y),
-            )
+            start = pygame.Vector2(grid_rect.left, y)
+            end = pygame.Vector2(grid_rect.right, y)
+            self._draw_dashed_line(grid_surface, color, start, end)
 
         surface.blit(grid_surface, (0, 0))
 
@@ -183,8 +186,8 @@ class CardGameApp:
         self,
         surface: pygame.Surface,
         color: pygame.Color,
-        start: tuple[int, int],
-        end: tuple[int, int],
+        start: pygame.Vector2,
+        end: pygame.Vector2,
     ) -> None:
         """Draw a dashed line between *start* and *end* on *surface*."""
 
@@ -205,14 +208,31 @@ class CardGameApp:
             dash_end = min(progress + dash, length)
             start_point = start_vec + direction * progress
             end_point = start_vec + direction * dash_end
+            start_screen = self._world_to_screen(start_point)
+            end_screen = self._world_to_screen(end_point)
             pygame.draw.line(
                 surface,
                 color,
-                (int(round(start_point.x)), int(round(start_point.y))),
-                (int(round(end_point.x)), int(round(end_point.y))),
-                self.GRID_LINE_WIDTH,
+                (int(round(start_screen.x)), int(round(start_screen.y))),
+                (int(round(end_screen.x)), int(round(end_screen.y))),
+                max(1, int(round(self.GRID_LINE_WIDTH * self.zoom))),
             )
             progress = dash_end + gap
+
+    def _draw_object(self, surface: pygame.Surface, obj: GameObject) -> None:
+        """Draw *obj* onto *surface* accounting for the current zoom."""
+
+        world_position = pygame.Vector2(obj.rect.topleft)
+        screen_position = self._world_to_screen(world_position)
+        if abs(self.zoom - 1.0) < 1e-3:
+            image = obj.image
+        else:
+            width = max(1, int(round(obj.image.get_width() * self.zoom)))
+            height = max(1, int(round(obj.image.get_height() * self.zoom)))
+            image = pygame.transform.smoothscale(obj.image, (width, height))
+        draw_rect = image.get_rect()
+        draw_rect.topleft = (int(round(screen_position.x)), int(round(screen_position.y)))
+        surface.blit(image, draw_rect)
 
     def _snap_object_to_grid(self, obj: GameObject) -> None:
         """Snap *obj* to the nearest grid coordinate, respecting its span."""
@@ -264,3 +284,38 @@ class CardGameApp:
             self.draw()
 
         pygame.quit()
+
+    # Coordinate helpers ----------------------------------------------
+
+    def _adjust_zoom(self, steps: int) -> None:
+        """Modify the global zoom level by *steps* scroll increments."""
+
+        if steps == 0:
+            return
+        zoom_factor = 1.2 ** steps
+        new_zoom = max(self.min_zoom, min(self.max_zoom, self.zoom * zoom_factor))
+        if abs(new_zoom - self.zoom) < 1e-6:
+            return
+        self.zoom = new_zoom
+
+    def _world_to_screen(self, point: pygame.Vector2) -> pygame.Vector2:
+        """Convert a world-space *point* to screen-space coordinates."""
+
+        assert self.screen is not None
+        screen_size = pygame.Vector2(self.screen.get_size())
+        world_center = pygame.Vector2(self.world_size) / 2
+        screen_center = screen_size / 2
+        offset = pygame.Vector2(point) - world_center
+        return screen_center + offset * self.zoom
+
+    def _screen_to_world(self, point: pygame.Vector2) -> pygame.Vector2:
+        """Convert a screen-space *point* to world-space coordinates."""
+
+        assert self.screen is not None
+        screen_size = pygame.Vector2(self.screen.get_size())
+        world_center = pygame.Vector2(self.world_size) / 2
+        screen_center = screen_size / 2
+        offset = pygame.Vector2(point) - screen_center
+        if self.zoom != 0:
+            offset /= self.zoom
+        return world_center + offset
