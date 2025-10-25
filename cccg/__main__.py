@@ -25,6 +25,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Override the target frame rate.",
     )
+    parser.add_argument(
+        "--fullscreen",
+        dest="fullscreen",
+        action="store_true",
+        help="Start the game in full-screen windowed mode.",
+    )
+    parser.add_argument(
+        "--windowed",
+        dest="fullscreen",
+        action="store_false",
+        help="Force the game to start in windowed mode.",
+    )
+    parser.set_defaults(fullscreen=None)
     return parser
 
 
@@ -34,6 +47,11 @@ def parse_config(namespace: argparse.Namespace) -> GameConfig:
     width = namespace.width or display.width
     height = namespace.height or display.height
     fps = namespace.fps or display.frame_rate
+    fullscreen = (
+        display.fullscreen
+        if namespace.fullscreen is None
+        else namespace.fullscreen
+    )
 
     return GameConfig(
         display=DisplayConfig(
@@ -41,6 +59,7 @@ def parse_config(namespace: argparse.Namespace) -> GameConfig:
             height=height,
             caption=display.caption,
             frame_rate=fps,
+            fullscreen=fullscreen,
         )
     )
 

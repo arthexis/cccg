@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "CCCG: Run game",
+            "type": "python",
+            "request": "launch",
+            "module": "cccg",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "CCCG: Run fullscreen",
+            "type": "python",
+            "request": "launch",
+            "module": "cccg",
+            "console": "integratedTerminal",
+            "args": ["--fullscreen"]
+        }
+    ]
+}

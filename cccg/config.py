@@ -14,6 +14,7 @@ class DisplayConfig:
     height: int = 720
     caption: str = "CCCG - Collectible Children Card Game"
     frame_rate: int = 60
+    fullscreen: bool = False
 
 
 @dataclass(frozen=True)

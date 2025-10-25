@@ -24,7 +24,18 @@ class CardGameApp:
         pygame.init()
         self.resources.ensure_directories()
         display = self.config.display
-        self.screen = pygame.display.set_mode((display.width, display.height))
+        flags = 0
+        size = (display.width, display.height)
+
+        if display.fullscreen:
+            flags |= pygame.FULLSCREEN
+            if display.width > 0 and display.height > 0:
+                size = (display.width, display.height)
+            else:
+                info = pygame.display.Info()
+                size = (info.current_w, info.current_h)
+
+        self.screen = pygame.display.set_mode(size, flags)
         pygame.display.set_caption(display.caption)
         self.clock = pygame.time.Clock()
         self.running = True
