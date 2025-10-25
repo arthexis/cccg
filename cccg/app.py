@@ -12,6 +12,12 @@ from .resources import ResourceManager
 class CardGameApp:
     """Minimal pygame wrapper that wires together the systems."""
 
+    GRID_CELL_SIZE = 48
+    GRID_MARGIN = 72
+    GRID_DASH_LENGTH = 10
+    GRID_GAP_LENGTH = 6
+    GRID_LINE_WIDTH = 1
+
     def __init__(self, config: GameConfig | None = None) -> None:
         self.config = config or GameConfig()
         self.resources = ResourceManager(self.config.assets)
@@ -68,6 +74,8 @@ class CardGameApp:
 
         assert self.screen is not None
         self.screen.fill((32, 48, 64))
+        if self.dragged_object is not None:
+            self._draw_grid(self.screen)
         for obj in self.objects:
             obj.draw(self.screen)
         pygame.display.flip()
@@ -81,6 +89,8 @@ class CardGameApp:
             CardSprite("A♠", position=(120, 140)),
             DeckSprite(position=(320, 120)),
         ]
+        for obj in self.objects:
+            self._snap_object_to_grid(obj)
         self.dragged_object = None
 
     def _begin_drag(self, pointer: pygame.Vector2) -> None:
@@ -115,7 +125,128 @@ class CardGameApp:
             return
         self._drag_object(pointer)
         self.dragged_object.set_scale(1.0)
+        self._snap_object_to_grid(self.dragged_object)
         self.dragged_object = None
+
+    # Grid helpers -----------------------------------------------------
+
+    def _grid_geometry(self) -> tuple[pygame.Rect, int, int]:
+        """Return the drawable grid rect and its column/row counts."""
+
+        assert self.screen is not None
+        width, height = self.screen.get_size()
+        cell = self.GRID_CELL_SIZE
+        margin = self.GRID_MARGIN
+
+        available_width = max(width - 2 * margin, cell)
+        available_height = max(height - 2 * margin, cell)
+
+        columns = max(1, available_width // cell)
+        rows = max(1, available_height // cell)
+
+        grid_width = columns * cell
+        grid_height = rows * cell
+
+        left = (width - grid_width) // 2
+        top = (height - grid_height) // 2
+
+        return pygame.Rect(left, top, grid_width, grid_height), columns, rows
+
+    def _draw_grid(self, surface: pygame.Surface) -> None:
+        """Render a dashed white grid centred on the play area."""
+
+        grid_rect, columns, rows = self._grid_geometry()
+        grid_surface = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        color = pygame.Color(255, 255, 255, 150)
+
+        for col in range(columns + 1):
+            x = grid_rect.left + col * self.GRID_CELL_SIZE
+            self._draw_dashed_line(
+                grid_surface,
+                color,
+                (x, grid_rect.top),
+                (x, grid_rect.bottom),
+            )
+
+        for row in range(rows + 1):
+            y = grid_rect.top + row * self.GRID_CELL_SIZE
+            self._draw_dashed_line(
+                grid_surface,
+                color,
+                (grid_rect.left, y),
+                (grid_rect.right, y),
+            )
+
+        surface.blit(grid_surface, (0, 0))
+
+    def _draw_dashed_line(
+        self,
+        surface: pygame.Surface,
+        color: pygame.Color,
+        start: tuple[int, int],
+        end: tuple[int, int],
+    ) -> None:
+        """Draw a dashed line between *start* and *end* on *surface*."""
+
+        dash = self.GRID_DASH_LENGTH
+        gap = self.GRID_GAP_LENGTH
+
+        start_vec = pygame.Vector2(start)
+        end_vec = pygame.Vector2(end)
+        direction = end_vec - start_vec
+        length = direction.length()
+        if length == 0:
+            return
+
+        direction.normalize_ip()
+        progress = 0.0
+
+        while progress < length:
+            dash_end = min(progress + dash, length)
+            start_point = start_vec + direction * progress
+            end_point = start_vec + direction * dash_end
+            pygame.draw.line(
+                surface,
+                color,
+                (int(round(start_point.x)), int(round(start_point.y))),
+                (int(round(end_point.x)), int(round(end_point.y))),
+                self.GRID_LINE_WIDTH,
+            )
+            progress = dash_end + gap
+
+    def _snap_object_to_grid(self, obj: GameObject) -> None:
+        """Snap *obj* to the nearest grid coordinate, respecting its span."""
+
+        grid_rect, columns, rows = self._grid_geometry()
+        cell = self.GRID_CELL_SIZE
+        span_x, span_y = getattr(obj, "GRID_SPAN", (1, 1))
+
+        origin = pygame.Vector2(grid_rect.topleft)
+        block_width = span_x * cell
+        block_height = span_y * cell
+
+        margin_x = max(0.0, (block_width - obj.rect.width) / 2)
+        margin_y = max(0.0, (block_height - obj.rect.height) / 2)
+        margin_vec = pygame.Vector2(margin_x, margin_y)
+
+        block_candidate = pygame.Vector2(obj.rect.topleft) - margin_vec
+        relative = block_candidate - origin
+        if cell > 0:
+            cell_x = round(relative.x / cell)
+            cell_y = round(relative.y / cell)
+        else:
+            cell_x = cell_y = 0
+
+        max_cell_x = max(0, columns - span_x)
+        max_cell_y = max(0, rows - span_y)
+        cell_x = int(max(0, min(cell_x, max_cell_x)))
+        cell_y = int(max(0, min(cell_y, max_cell_y)))
+
+        snapped_block = origin + pygame.Vector2(cell_x * cell, cell_y * cell)
+        snapped_position = snapped_block + margin_vec
+
+        obj.rect.topleft = (int(snapped_position.x), int(snapped_position.y))
+        obj.position = obj.rect.topleft
 
     def run(self) -> None:
         """Run the main loop until the app stops."""

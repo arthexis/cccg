@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import ClassVar, Tuple
 
 import pygame
 
@@ -19,6 +19,7 @@ class GameObject:
     position: tuple[int, int]
     scale: float = 1.0
     base_image: pygame.Surface = field(init=False, repr=False)
+    GRID_SPAN: ClassVar[tuple[int, int]] = (1, 1)
 
     def __post_init__(self) -> None:
         self.base_image = self.image.copy()
@@ -55,6 +56,7 @@ class CardSprite(GameObject):
     """Concrete sprite representing a face-up playing card."""
 
     CARD_SIZE = (90, 132)
+    GRID_SPAN: ClassVar[tuple[int, int]] = (2, 3)
 
     SUIT_COLORS = {
         "♠": (20, 20, 20),
@@ -163,6 +165,7 @@ class DeckSprite(GameObject):
     """Sprite representing a face-down deck of playing cards."""
 
     DECK_SIZE = CardSprite.CARD_SIZE
+    GRID_SPAN: ClassVar[tuple[int, int]] = (2, 3)
 
     def __init__(self, position: tuple[int, int]) -> None:
         image = self._create_deck_surface()
