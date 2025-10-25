@@ -25,10 +25,13 @@ class GameObject:
         surface.blit(self.image, self.rect)
 
 
+CARD_PADDING = 6
+
+
 class CardSprite(GameObject):
     """Concrete sprite representing a face-up playing card."""
 
-    CARD_SIZE = (80, 112)
+    CARD_SIZE = (90, 132)
 
     SUIT_COLORS = {
         "♠": (20, 20, 20),
@@ -48,7 +51,7 @@ class CardSprite(GameObject):
         surface.fill((0, 0, 0, 0))
 
         border_radius = 12
-        card_rect = surface.get_rect()
+        card_rect = surface.get_rect().inflate(-2 * CARD_PADDING, -2 * CARD_PADDING)
         face_color = (246, 246, 246)
         outline_color = (24, 24, 24)
         pygame.draw.rect(surface, face_color, card_rect, border_radius=border_radius)
@@ -57,22 +60,22 @@ class CardSprite(GameObject):
         value, suit = CardSprite._split_label(label)
         suit_color = CardSprite.SUIT_COLORS.get(suit, outline_color)
 
-        value_font = pygame.font.Font(None, 48)
-        suit_font = pygame.font.Font(None, 40)
-        center_font = pygame.font.Font(None, 76)
+        value_font = CardSprite._load_font(48, bold=True)
+        suit_font = CardSprite._load_font(40)
+        center_font = CardSprite._load_font(82)
 
         value_surface = value_font.render(value, True, suit_color)
         suit_surface = suit_font.render(suit, True, suit_color)
 
         if suit:
             pip_surface = CardSprite._build_corner_pip(value_surface, suit_surface)
-            padding = 10
-            surface.blit(pip_surface, (padding, padding))
+            padding = card_rect.left + 6
+            surface.blit(pip_surface, (padding, card_rect.top + 6))
             pip_rotated = pygame.transform.rotate(pip_surface, 180)
             pip_rect = pip_rotated.get_rect()
             pip_rect.bottomright = (
-                CardSprite.CARD_SIZE[0] - padding,
-                CardSprite.CARD_SIZE[1] - padding,
+                card_rect.right - 6,
+                card_rect.bottom - 6,
             )
             surface.blit(pip_rotated, pip_rect)
 
@@ -82,12 +85,28 @@ class CardSprite(GameObject):
             surface.blit(center_surface, center_rect)
         else:
             # Fallback to centered label when no suit is provided.
-            fallback_font = pygame.font.Font(None, 54)
+            fallback_font = CardSprite._load_font(54)
             text = fallback_font.render(label, True, outline_color)
             text_rect = text.get_rect(center=card_rect.center)
             surface.blit(text, text_rect)
 
         return surface
+
+    @staticmethod
+    def _load_font(size: int, bold: bool = False) -> pygame.font.Font:
+        """Load a font that supports suit glyphs with sensible fallbacks."""
+
+        preferred_fonts = [
+            "dejavusans",
+            "arialunicode",
+            "arial",
+            "liberationsans",
+        ]
+        for name in preferred_fonts:
+            path = pygame.font.match_font(name, bold=bold)
+            if path:
+                return pygame.font.Font(path, size)
+        return pygame.font.Font(None, size)
 
     @staticmethod
     def _split_label(label: str) -> tuple[str, str]:
@@ -120,7 +139,7 @@ class CardSprite(GameObject):
 class DeckSprite(GameObject):
     """Sprite representing a face-down deck of playing cards."""
 
-    DECK_SIZE = (90, 132)
+    DECK_SIZE = CardSprite.CARD_SIZE
 
     def __init__(self, position: tuple[int, int]) -> None:
         image = self._create_deck_surface()
@@ -131,12 +150,36 @@ class DeckSprite(GameObject):
         surface = pygame.Surface(DeckSprite.DECK_SIZE, pygame.SRCALPHA)
         surface.fill((0, 0, 0, 0))
 
-        rect = surface.get_rect()
+        outer_rect = surface.get_rect()
         border_radius = 16
-        base_color: Color = (120, 0, 0)
-        pygame.draw.rect(surface, base_color, rect, border_radius=border_radius)
+        card_rect = outer_rect.inflate(-2 * CARD_PADDING, -2 * CARD_PADDING)
 
-        inner_rect = rect.inflate(-18, -18)
+        stack_layers = 3
+        offset_step = 5
+        stack_color: Color = (100, 0, 0)
+        stack_border: Color = (40, 0, 0)
+        for depth in range(stack_layers, 0, -1):
+            offset = depth * offset_step
+            layer_rect = card_rect.move(offset, -offset)
+            layer_rect.width = max(layer_rect.width - offset, 12)
+            layer_rect.height = max(layer_rect.height - offset, 12)
+            layer_rect = layer_rect.clip(outer_rect)
+            if layer_rect.width <= 0 or layer_rect.height <= 0:
+                continue
+            layer_radius = max(border_radius - depth * 2, 4)
+            pygame.draw.rect(surface, stack_color, layer_rect, border_radius=layer_radius)
+            pygame.draw.rect(
+                surface,
+                stack_border,
+                layer_rect,
+                width=2,
+                border_radius=layer_radius,
+            )
+
+        base_color: Color = (120, 0, 0)
+        pygame.draw.rect(surface, base_color, card_rect, border_radius=border_radius)
+
+        inner_rect = card_rect.inflate(-18, -18)
         gradient_surface = pygame.Surface(inner_rect.size, pygame.SRCALPHA)
         top_color = pygame.Color(210, 60, 60)
         bottom_color = pygame.Color(90, 0, 0)
@@ -185,7 +228,13 @@ class DeckSprite(GameObject):
 
         border_color: Color = (30, 0, 0)
         accent_color: Color = (230, 200, 200)
-        pygame.draw.rect(surface, border_color, rect, width=3, border_radius=border_radius)
-        pygame.draw.rect(surface, accent_color, rect.inflate(-10, -10), width=2, border_radius=border_radius - 4)
+        pygame.draw.rect(surface, border_color, card_rect, width=3, border_radius=border_radius)
+        pygame.draw.rect(
+            surface,
+            accent_color,
+            card_rect.inflate(-10, -10),
+            width=2,
+            border_radius=max(border_radius - 4, 0),
+        )
 
         return surface
