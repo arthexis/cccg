@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
-from typing import ClassVar, Tuple
+from typing import ClassVar, Deque, Tuple
 
 import pygame
 
@@ -19,12 +20,22 @@ class GameObject:
     position: tuple[int, int]
     scale: float = 1.0
     base_image: pygame.Surface = field(init=False, repr=False)
+    shadow_trail: Deque[tuple[pygame.Vector2, float, float]] = field(
+        init=False, repr=False
+    )
+    _shadow_last_sample: pygame.Vector2 | None = field(init=False, repr=False)
+    _shadow_cache: dict[float, pygame.Surface] = field(init=False, repr=False)
     GRID_SPAN: ClassVar[tuple[int, int]] = (1, 1)
+    SHADOW_LIFETIME: ClassVar[float] = 0.25
+    SHADOW_MIN_DISTANCE: ClassVar[float] = 8.0
 
     def __post_init__(self) -> None:
         self.base_image = self.image.copy()
         self.scale = float(self.scale)
         self.rect = self.image.get_rect(topleft=self.position)
+        self.shadow_trail = deque()
+        self._shadow_last_sample = None
+        self._shadow_cache = {}
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.blit(self.image, self.rect)
@@ -47,6 +58,59 @@ class GameObject:
         self.rect = self.image.get_rect()
         self.rect.topleft = old_topleft
         self.position = self.rect.topleft
+
+    # Shadow helpers -------------------------------------------------
+
+    def capture_shadow_sample(self) -> None:
+        """Record the current sprite position for trailing shadows."""
+
+        now = pygame.time.get_ticks() / 1000.0
+        current_position = pygame.Vector2(self.rect.topleft)
+        if (
+            self._shadow_last_sample is not None
+            and (current_position - self._shadow_last_sample).length_squared()
+            < self.SHADOW_MIN_DISTANCE**2
+        ):
+            return
+
+        self.shadow_trail.append((current_position, float(self.scale), now))
+        self._shadow_last_sample = pygame.Vector2(current_position)
+        self._trim_shadow_trail(now)
+
+    def _trim_shadow_trail(self, now: float | None = None) -> None:
+        """Discard outdated samples based on the configured lifetime."""
+
+        if now is None:
+            now = pygame.time.get_ticks() / 1000.0
+        while self.shadow_trail and now - self.shadow_trail[0][2] > self.SHADOW_LIFETIME:
+            self.shadow_trail.popleft()
+
+    def update_shadow_history(self) -> None:
+        """Refresh internal timers, removing expired shadow samples."""
+
+        self._trim_shadow_trail()
+        if not self.shadow_trail:
+            self._shadow_last_sample = None
+
+    def get_shadow_surface(self, scale: float) -> pygame.Surface:
+        """Return a tinted copy of the sprite scaled to *scale* for shadows."""
+
+        rounded_scale = round(scale * 1000) / 1000
+        cached = self._shadow_cache.get(rounded_scale)
+        if cached is not None:
+            return cached
+
+        if abs(scale - 1.0) < 1e-3:
+            base = self.base_image
+        else:
+            width = max(1, int(round(self.base_image.get_width() * scale)))
+            height = max(1, int(round(self.base_image.get_height() * scale)))
+            base = pygame.transform.smoothscale(self.base_image, (width, height))
+
+        shadow_surface = base.copy()
+        shadow_surface.fill((0, 0, 0, 160), special_flags=pygame.BLEND_RGBA_MULT)
+        self._shadow_cache[rounded_scale] = shadow_surface
+        return shadow_surface
 
 
 CARD_PADDING = 6
