@@ -35,6 +35,10 @@ class CardGameApp:
         self.camera_center = pygame.Vector2(0, 0)
         self.pan_active = False
         self.pan_last_pos = pygame.Vector2()
+        self.last_click_time = 0
+        self.last_clicked_object: GameObject | None = None
+        self.double_click_threshold_ms = 400
+        self.deck_sprite: DeckSprite | None = None
 
     def setup(self) -> None:
         """Initialise pygame and the display surface."""
@@ -67,6 +71,10 @@ class CardGameApp:
                 self.running = False
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pointer_world = self._screen_to_world(pygame.Vector2(event.pos))
+                clicked_object = self._find_top_object(pointer_world)
+                if self._handle_control_double_click(clicked_object):
+                    continue
+                self._record_pointer_click(clicked_object)
                 if not self._begin_drag(pointer_world):
                     self._begin_pan(pygame.Vector2(event.pos))
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -107,13 +115,166 @@ class CardGameApp:
         card_position = (-card_width - horizontal_gap // 2, -card_height // 2)
         deck_position = (horizontal_gap // 2, -deck_height // 2)
 
+        self.deck_sprite = DeckSprite(position=deck_position)
         self.objects = [
             CardSprite("A♠", position=card_position),
-            DeckSprite(position=deck_position),
+            self.deck_sprite,
         ]
         for obj in self.objects:
             self._snap_object_to_grid(obj)
         self.dragged_object = None
+
+    def _find_top_object(self, pointer: pygame.Vector2) -> GameObject | None:
+        """Return the top-most object at *pointer* if any."""
+
+        for candidate in reversed(self.objects):
+            if candidate.rect.collidepoint(pointer.x, pointer.y):
+                return candidate
+        return None
+
+    def _record_pointer_click(self, clicked_object: GameObject | None) -> None:
+        """Track the most recent pointer click for double-click detection."""
+
+        if clicked_object is not None and clicked_object not in self.objects:
+            clicked_object = None
+        self.last_clicked_object = clicked_object
+        self.last_click_time = pygame.time.get_ticks()
+
+    def _reset_click_tracker(self) -> None:
+        """Clear the stored click state."""
+
+        self.last_clicked_object = None
+        self.last_click_time = 0
+
+    def _handle_control_double_click(self, clicked_object: GameObject | None) -> bool:
+        """Trigger a deck draw when control + double click is detected."""
+
+        if clicked_object is None:
+            return False
+
+        if self.last_clicked_object is not None and self.last_clicked_object not in self.objects:
+            self._reset_click_tracker()
+
+        if not isinstance(clicked_object, DeckSprite):
+            return False
+
+        if self.deck_sprite is None or clicked_object is not self.deck_sprite:
+            return False
+
+        if not (pygame.key.get_mods() & pygame.KMOD_CTRL):
+            return False
+
+        now = pygame.time.get_ticks()
+        if (
+            self.last_clicked_object is clicked_object
+            and 0 < now - self.last_click_time <= self.double_click_threshold_ms
+        ):
+            self._spawn_card_from_deck(clicked_object)
+            self._reset_click_tracker()
+            return True
+
+        return False
+
+    def _spawn_card_from_deck(self, deck: DeckSprite) -> bool:
+        """Draw a card from *deck* and spawn it if space is available."""
+
+        if deck is None:
+            return False
+
+        position = self._find_free_card_position(deck)
+        if position is None:
+            return False
+
+        card_label = deck.draw_card()
+        if card_label is None:
+            self._remove_deck(deck)
+            return False
+
+        new_card = CardSprite(card_label, position=position)
+        self._snap_object_to_grid(new_card)
+        self.objects.append(new_card)
+
+        if deck.is_empty():
+            self._remove_deck(deck)
+
+        return True
+
+    def _remove_deck(self, deck: DeckSprite) -> None:
+        """Remove *deck* from the scene and clear references."""
+
+        if deck in self.objects:
+            self.objects.remove(deck)
+        if self.deck_sprite is deck:
+            self.deck_sprite = None
+        if self.last_clicked_object is deck:
+            self._reset_click_tracker()
+
+    def _find_free_card_position(self, deck: DeckSprite) -> tuple[int, int] | None:
+        """Locate a nearby free grid position for a card next to *deck*."""
+
+        cell = self.GRID_CELL_SIZE
+        deck_cell, _, _ = self._get_object_grid_cell(deck)
+        card_span_x, card_span_y = CardSprite.GRID_SPAN
+
+        block_width = card_span_x * cell
+        block_height = card_span_y * cell
+        margin_x = max(0.0, (block_width - CardSprite.CARD_SIZE[0]) / 2)
+        margin_y = max(0.0, (block_height - CardSprite.CARD_SIZE[1]) / 2)
+        card_margin = pygame.Vector2(margin_x, margin_y)
+
+        offsets = [
+            (card_span_x, 0),
+            (-card_span_x, 0),
+            (0, -card_span_y),
+            (0, card_span_y),
+            (card_span_x, -card_span_y),
+            (card_span_x, card_span_y),
+            (-card_span_x, -card_span_y),
+            (-card_span_x, card_span_y),
+        ]
+
+        for dx, dy in offsets:
+            candidate_cell = pygame.Vector2(deck_cell.x + dx, deck_cell.y + dy)
+            candidate_origin = pygame.Vector2(candidate_cell.x * cell, candidate_cell.y * cell)
+            candidate_position = candidate_origin + card_margin
+            card_rect = pygame.Rect(
+                int(round(candidate_position.x)),
+                int(round(candidate_position.y)),
+                CardSprite.CARD_SIZE[0],
+                CardSprite.CARD_SIZE[1],
+            )
+            collision = False
+            for obj in self.objects:
+                if obj is deck:
+                    continue
+                if card_rect.colliderect(obj.rect):
+                    collision = True
+                    break
+            if not collision:
+                return card_rect.topleft
+
+        return None
+
+    def _get_object_grid_cell(
+        self, obj: GameObject
+    ) -> tuple[pygame.Vector2, pygame.Vector2, tuple[int, int]]:
+        """Return the grid cell, margin, and span metadata for *obj*."""
+
+        cell = self.GRID_CELL_SIZE
+        span = getattr(obj, "GRID_SPAN", (1, 1))
+        span_x, span_y = span
+        block_width = span_x * cell
+        block_height = span_y * cell
+        margin_x = max(0.0, (block_width - obj.rect.width) / 2)
+        margin_y = max(0.0, (block_height - obj.rect.height) / 2)
+        margin = pygame.Vector2(margin_x, margin_y)
+        block_candidate = pygame.Vector2(obj.rect.topleft) - margin
+        if cell > 0:
+            cell_x = round(block_candidate.x / cell)
+            cell_y = round(block_candidate.y / cell)
+        else:
+            cell_x = cell_y = 0
+        return pygame.Vector2(cell_x, cell_y), margin, span
 
     def _begin_drag(self, pointer: pygame.Vector2) -> bool:
         """Start dragging the top-most object under *pointer* if any."""
