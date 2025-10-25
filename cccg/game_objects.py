@@ -214,16 +214,18 @@ class DeckSprite(GameObject):
     RENDER_SCALE = CardSprite.RENDER_SCALE
 
     def __init__(self, position: tuple[int, int], cards: Iterable[str] | None = None) -> None:
-        image = self._create_deck_surface()
-        super().__init__(image=image, position=position)
         if cards is None:
             cards = self._build_standard_deck()
         self.cards: list[str] = list(cards)
+        image = self._create_deck_surface(card_count=len(self.cards))
+        super().__init__(image=image, position=position)
 
     @staticmethod
-    def _create_deck_surface(scale: int = 1) -> pygame.Surface:
+    def _create_deck_surface(scale: int = 1, card_count: int = 0) -> pygame.Surface:
         width = DeckSprite.DECK_SIZE[0] * scale
-        height = DeckSprite.DECK_SIZE[1] * scale
+        base_height = DeckSprite.DECK_SIZE[1] * scale
+        extra_height = max(0, int(card_count)) * scale
+        height = base_height + extra_height
         surface = pygame.Surface((width, height), pygame.SRCALPHA)
         surface.fill((0, 0, 0, 0))
 
@@ -251,9 +253,9 @@ class DeckSprite(GameObject):
         gradient_surface = pygame.Surface(inner_rect.size, pygame.SRCALPHA)
         top_color = pygame.Color(210, 60, 60)
         bottom_color = pygame.Color(90, 0, 0)
-        height = inner_rect.height or 1
+        gradient_height = inner_rect.height or 1
         for y in range(inner_rect.height):
-            ratio = y / (height - 1 or 1)
+            ratio = y / (gradient_height - 1 or 1)
             color = (
                 int(top_color.r + (bottom_color.r - top_color.r) * ratio),
                 int(top_color.g + (bottom_color.g - top_color.g) * ratio),
@@ -326,7 +328,28 @@ class DeckSprite(GameObject):
     def draw_card(self) -> str | None:
         if not self.cards:
             return None
-        return self.cards.pop()
+        card = self.cards.pop()
+        self._refresh_deck_image()
+        return card
 
     def is_empty(self) -> bool:
         return not self.cards
+
+    def _refresh_deck_image(self) -> None:
+        new_base_image = self._create_deck_surface(card_count=len(self.cards))
+        old_topleft = self.rect.topleft
+        current_scale = self.scale
+
+        self.base_image = new_base_image
+        if abs(current_scale - 1.0) < 1e-3:
+            self.image = new_base_image.copy()
+        else:
+            width = max(1, int(round(new_base_image.get_width() * current_scale)))
+            height = max(1, int(round(new_base_image.get_height() * current_scale)))
+            self.image = pygame.transform.smoothscale(new_base_image, (width, height))
+
+        self.rect = self.image.get_rect()
+        self.rect.topleft = old_topleft
+        self.position = self.rect.topleft
+        if hasattr(self, "_shadow_cache"):
+            self._shadow_cache.clear()
