@@ -2,9 +2,7 @@ CCCG - Collectible Children Card Game
 =====================================
 
 This repository contains the very first scaffolding for a collectible card game
-prototype powered by `pygame <https://www.pygame.org>`_. The CCCG name leans
-into the joke that the project could either be about collecting children or a
-collectible game designed for children.
+prototype powered by `pygame <https://www.pygame.org>`_. 
 
 Running the prototype
 ---------------------
