@@ -28,7 +28,7 @@ class CardGameApp:
         self.objects: list[GameObject] = []
         self.dragged_object: GameObject | None = None
         self.drag_offset = pygame.Vector2()
-        self.drag_scale = 1.15
+        self.drag_scale = 1.30
         self.zoom = 1.0
         self.min_zoom = 0.25
         self.max_zoom = 4.0
@@ -39,6 +39,8 @@ class CardGameApp:
         self.last_clicked_object: GameObject | None = None
         self.double_click_threshold_ms = 400
         self.deck_sprite: DeckSprite | None = None
+        self.last_escape_press_time = 0
+        self.escape_double_press_threshold_ms = 500
 
     def setup(self) -> None:
         """Initialise pygame and the display surface."""
@@ -69,6 +71,9 @@ class CardGameApp:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self._handle_escape_press()
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pointer_world = self._screen_to_world(pygame.Vector2(event.pos))
                 clicked_object = self._find_top_object(pointer_world)
@@ -174,6 +179,29 @@ class CardGameApp:
             return True
 
         return False
+
+    def _handle_escape_press(self) -> None:
+        """Center the camera on the deck when escape is pressed twice."""
+
+        now = pygame.time.get_ticks()
+        if (
+            self.last_escape_press_time
+            and 0 < now - self.last_escape_press_time <= self.escape_double_press_threshold_ms
+        ):
+            self._center_view_on_deck()
+            self.last_escape_press_time = 0
+        else:
+            self.last_escape_press_time = now
+
+    def _center_view_on_deck(self) -> None:
+        """Reposition the camera so the deck is centred on screen."""
+
+        deck = self.deck_sprite
+        if deck is not None:
+            self.camera_center = pygame.Vector2(deck.rect.center)
+        else:
+            self.camera_center = pygame.Vector2(0, 0)
+        self.pan_active = False
 
     def _spawn_card_from_deck(self, deck: DeckSprite) -> bool:
         """Draw a card from *deck* and spawn it if space is available."""

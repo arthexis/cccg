@@ -158,8 +158,6 @@ class CardSprite(GameObject):
 
         value_font = CardSprite._load_font(48 * scale, bold=True)
         suit_font = CardSprite._load_font(40 * scale)
-        center_font = CardSprite._load_font(82 * scale)
-
         if suit:
             value_surface = value_font.render(value, True, suit_color)
             suit_surface = suit_font.render(suit, True, suit_color)
@@ -173,10 +171,6 @@ class CardSprite(GameObject):
                 card_rect.bottom - padding,
             )
             surface.blit(suit_surface, suit_rect)
-
-            center_surface = center_font.render(suit, True, suit_color)
-            center_rect = center_surface.get_rect(center=card_rect.center)
-            surface.blit(center_surface, center_rect)
         else:
             # Fallback to centered label when no suit is provided.
             fallback_font = CardSprite._load_font(54 * scale)
