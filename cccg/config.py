@@ -12,7 +12,7 @@ class DisplayConfig:
 
     width: int = 1280
     height: int = 720
-    caption: str = "Sigils - CCCG Prototype"
+    caption: str = "CCCG - Collectible Children Card Game"
     frame_rate: int = 60
 
 
