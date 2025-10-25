@@ -57,6 +57,7 @@ class CardSprite(GameObject):
 
     CARD_SIZE = (90, 132)
     GRID_SPAN: ClassVar[tuple[int, int]] = (2, 3)
+    RENDER_SCALE = 4
 
     SUIT_COLORS = {
         "♠": (20, 20, 20),
@@ -66,17 +67,22 @@ class CardSprite(GameObject):
     }
 
     def __init__(self, label: str, position: tuple[int, int]) -> None:
-        image = self._create_card_surface(label)
+        hi_res_image = self._create_card_surface(label, scale=self.RENDER_SCALE)
+        image = pygame.transform.smoothscale(hi_res_image, CardSprite.CARD_SIZE)
         super().__init__(image=image, position=position)
         self.label = label
+        self.hi_res_image = hi_res_image
+        self.hi_res_scale = float(self.RENDER_SCALE)
 
     @staticmethod
-    def _create_card_surface(label: str) -> pygame.Surface:
-        surface = pygame.Surface(CardSprite.CARD_SIZE, pygame.SRCALPHA)
+    def _create_card_surface(label: str, scale: int = 1) -> pygame.Surface:
+        width = CardSprite.CARD_SIZE[0] * scale
+        height = CardSprite.CARD_SIZE[1] * scale
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
         surface.fill((0, 0, 0, 0))
 
-        border_radius = 12
-        card_rect = surface.get_rect().inflate(-2 * CARD_PADDING, -2 * CARD_PADDING)
+        border_radius = 12 * scale
+        card_rect = surface.get_rect().inflate(-2 * CARD_PADDING * scale, -2 * CARD_PADDING * scale)
         face_color = (246, 246, 246)
         outline_color = (24, 24, 24)
         pygame.draw.rect(surface, face_color, card_rect, border_radius=border_radius)
@@ -85,32 +91,30 @@ class CardSprite(GameObject):
         value, suit = CardSprite._split_label(label)
         suit_color = CardSprite.SUIT_COLORS.get(suit, outline_color)
 
-        value_font = CardSprite._load_font(48, bold=True)
-        suit_font = CardSprite._load_font(40)
-        center_font = CardSprite._load_font(82)
-
-        value_surface = value_font.render(value, True, suit_color)
-        suit_surface = suit_font.render(suit, True, suit_color)
+        value_font = CardSprite._load_font(48 * scale, bold=True)
+        suit_font = CardSprite._load_font(40 * scale)
+        center_font = CardSprite._load_font(82 * scale)
 
         if suit:
-            pip_surface = CardSprite._build_corner_pip(value_surface, suit_surface)
-            padding = card_rect.left + 6
-            surface.blit(pip_surface, (padding, card_rect.top + 6))
-            pip_rotated = pygame.transform.rotate(pip_surface, 180)
-            pip_rect = pip_rotated.get_rect()
-            pip_rect.bottomright = (
-                card_rect.right - 6,
-                card_rect.bottom - 6,
+            value_surface = value_font.render(value, True, suit_color)
+            suit_surface = suit_font.render(suit, True, suit_color)
+
+            padding = 6 * scale
+            surface.blit(value_surface, (card_rect.left + padding, card_rect.top + padding))
+
+            suit_rect = suit_surface.get_rect()
+            suit_rect.bottomright = (
+                card_rect.right - padding,
+                card_rect.bottom - padding,
             )
-            surface.blit(pip_rotated, pip_rect)
+            surface.blit(suit_surface, suit_rect)
 
-        if suit:
             center_surface = center_font.render(suit, True, suit_color)
             center_rect = center_surface.get_rect(center=card_rect.center)
             surface.blit(center_surface, center_rect)
         else:
             # Fallback to centered label when no suit is provided.
-            fallback_font = CardSprite._load_font(54)
+            fallback_font = CardSprite._load_font(54 * scale)
             text = fallback_font.render(label, True, outline_color)
             text_rect = text.get_rect(center=card_rect.center)
             surface.blit(text, text_rect)
@@ -143,54 +147,48 @@ class CardSprite(GameObject):
             return value, suit
         return label, ""
 
-    @staticmethod
-    def _build_corner_pip(value_surface: pygame.Surface, suit_surface: pygame.Surface) -> pygame.Surface:
-        diag_offset = 8
-        width = max(value_surface.get_width(), suit_surface.get_width() + diag_offset)
-        height = value_surface.get_height() + suit_surface.get_height() - diag_offset
-        height = max(height, max(value_surface.get_height(), suit_surface.get_height()))
-        pip_surface = pygame.Surface((width, height), pygame.SRCALPHA)
-        pip_surface.blit(value_surface, (0, 0))
-        pip_surface.blit(
-            suit_surface,
-            (
-                width - suit_surface.get_width(),
-                height - suit_surface.get_height(),
-            ),
-        )
-        return pip_surface
-
-
 class DeckSprite(GameObject):
     """Sprite representing a face-down deck of playing cards."""
 
     DECK_SIZE = CardSprite.CARD_SIZE
     GRID_SPAN: ClassVar[tuple[int, int]] = (2, 3)
+    RENDER_SCALE = CardSprite.RENDER_SCALE
 
     def __init__(self, position: tuple[int, int]) -> None:
-        image = self._create_deck_surface()
+        hi_res_image = self._create_deck_surface(scale=self.RENDER_SCALE)
+        image = pygame.transform.smoothscale(hi_res_image, DeckSprite.DECK_SIZE)
         super().__init__(image=image, position=position)
+        self.hi_res_image = hi_res_image
+        self.hi_res_scale = float(self.RENDER_SCALE)
 
     @staticmethod
-    def _create_deck_surface() -> pygame.Surface:
-        surface = pygame.Surface(DeckSprite.DECK_SIZE, pygame.SRCALPHA)
+    def _create_deck_surface(scale: int = 1) -> pygame.Surface:
+        width = DeckSprite.DECK_SIZE[0] * scale
+        height = DeckSprite.DECK_SIZE[1] * scale
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
         surface.fill((0, 0, 0, 0))
 
         outer_rect = surface.get_rect()
-        border_radius = 16
-        card_rect = outer_rect.inflate(-2 * CARD_PADDING, -2 * CARD_PADDING)
+        border_radius = 16 * scale
+        card_rect = outer_rect.inflate(-2 * CARD_PADDING * scale, -2 * CARD_PADDING * scale)
 
         base_color: Color = (120, 0, 0)
         pygame.draw.rect(surface, base_color, card_rect, border_radius=border_radius)
 
         edge_color: Color = (160, 30, 30)
-        edge_spacing = 6
-        edge_height = 3
+        edge_spacing = 6 * scale
+        edge_height = 3 * scale
+        horizontal_padding = 8 * scale
         for offset in range(edge_spacing, min(5 * edge_spacing, card_rect.height // 2), edge_spacing):
-            edge_rect = pygame.Rect(card_rect.left + 8, card_rect.top + offset, card_rect.width - 16, edge_height)
+            edge_rect = pygame.Rect(
+                card_rect.left + horizontal_padding,
+                card_rect.top + offset,
+                card_rect.width - 2 * horizontal_padding,
+                edge_height,
+            )
             pygame.draw.rect(surface, edge_color, edge_rect, border_radius=1)
 
-        inner_rect = card_rect.inflate(-18, -18)
+        inner_rect = card_rect.inflate(-18 * scale, -18 * scale)
         gradient_surface = pygame.Surface(inner_rect.size, pygame.SRCALPHA)
         top_color = pygame.Color(210, 60, 60)
         bottom_color = pygame.Color(90, 0, 0)
@@ -210,20 +208,21 @@ class DeckSprite(GameObject):
             )
 
         pattern_surface = pygame.Surface(inner_rect.size, pygame.SRCALPHA)
-        spacing = 10
+        spacing = 10 * scale
         pattern_color = (255, 215, 215, 70)
+        line_width = max(1, scale)
         for offset in range(-inner_rect.height, inner_rect.width, spacing):
             start = (offset, 0)
             end = (offset + inner_rect.height, inner_rect.height)
-            pygame.draw.line(pattern_surface, pattern_color, start, end, width=1)
+            pygame.draw.line(pattern_surface, pattern_color, start, end, width=line_width)
         for offset in range(0, inner_rect.width + inner_rect.height, spacing):
             start = (offset, 0)
             end = (offset - inner_rect.height, inner_rect.height)
-            pygame.draw.line(pattern_surface, pattern_color, start, end, width=1)
+            pygame.draw.line(pattern_surface, pattern_color, start, end, width=line_width)
 
         gradient_surface.blit(pattern_surface, (0, 0))
 
-        highlight_height = max(8, inner_rect.height // 3)
+        highlight_height = max(8 * scale, inner_rect.height // 3)
         highlight_surface = pygame.Surface((inner_rect.width, highlight_height), pygame.SRCALPHA)
         for y in range(highlight_height):
             alpha = int(120 * (1 - y / max(highlight_height - 1, 1)))
@@ -239,13 +238,19 @@ class DeckSprite(GameObject):
 
         border_color: Color = (30, 0, 0)
         accent_color: Color = (230, 200, 200)
-        pygame.draw.rect(surface, border_color, card_rect, width=3, border_radius=border_radius)
+        pygame.draw.rect(
+            surface,
+            border_color,
+            card_rect,
+            width=max(1, 3 * scale),
+            border_radius=border_radius,
+        )
         pygame.draw.rect(
             surface,
             accent_color,
-            card_rect.inflate(-10, -10),
-            width=2,
-            border_radius=max(border_radius - 4, 0),
+            card_rect.inflate(-10 * scale, -10 * scale),
+            width=max(1, 2 * scale),
+            border_radius=max(border_radius - 4 * scale, 0),
         )
 
         return surface

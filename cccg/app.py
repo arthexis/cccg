@@ -31,7 +31,7 @@ class CardGameApp:
         self.drag_scale = 1.15
         self.zoom = 1.0
         self.min_zoom = 0.25
-        self.max_zoom = 2.0
+        self.max_zoom = 4.0
         self.camera_center = pygame.Vector2(0, 0)
         self.pan_active = False
         self.pan_last_pos = pygame.Vector2()
@@ -256,12 +256,15 @@ class CardGameApp:
 
         world_position = pygame.Vector2(obj.rect.topleft)
         screen_position = self._world_to_screen(world_position)
-        if abs(self.zoom - 1.0) < 1e-3:
+        total_scale = obj.scale * self.zoom
+        if abs(total_scale - 1.0) < 1e-3:
             image = obj.image
         else:
-            width = max(1, int(round(obj.image.get_width() * self.zoom)))
-            height = max(1, int(round(obj.image.get_height() * self.zoom)))
-            image = pygame.transform.smoothscale(obj.image, (width, height))
+            source = getattr(obj, "hi_res_image", obj.base_image)
+            source_scale = float(getattr(obj, "hi_res_scale", 1.0))
+            width = max(1, int(round(source.get_width() * (total_scale / source_scale))))
+            height = max(1, int(round(source.get_height() * (total_scale / source_scale))))
+            image = pygame.transform.smoothscale(source, (width, height))
         draw_rect = image.get_rect()
         draw_rect.topleft = (int(round(screen_position.x)), int(round(screen_position.y)))
         surface.blit(image, draw_rect)
