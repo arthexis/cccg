@@ -29,5 +29,5 @@ Bug-Tracker = "https://github.com/arthexis/cccg/issues"
 
 
 [project.scripts]
-sigils = "cccg.__main__:main"
+cccg = "cccg.__main__:main"
 
