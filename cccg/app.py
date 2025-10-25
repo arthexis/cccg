@@ -31,7 +31,7 @@ class CardGameApp:
         self.drag_scale = 1.15
         self.zoom = 1.0
         self.min_zoom = 0.25
-        self.max_zoom = 2.0
+        self.max_zoom = 4.0
         self.camera_center = pygame.Vector2(0, 0)
         self.pan_active = False
         self.pan_last_pos = pygame.Vector2()
@@ -298,6 +298,7 @@ class CardGameApp:
 
         if self.dragged_object is None:
             return
+        self.dragged_object.capture_shadow_sample()
         new_position = pointer - self.drag_offset
         top_left = (int(new_position.x), int(new_position.y))
         self.dragged_object.rect.topleft = top_left
@@ -415,17 +416,58 @@ class CardGameApp:
     def _draw_object(self, surface: pygame.Surface, obj: GameObject) -> None:
         """Draw *obj* onto *surface* accounting for the current zoom."""
 
+        self._draw_shadow_trail(surface, obj)
         world_position = pygame.Vector2(obj.rect.topleft)
         screen_position = self._world_to_screen(world_position)
-        if abs(self.zoom - 1.0) < 1e-3:
+        total_scale = obj.scale * self.zoom
+        if abs(total_scale - 1.0) < 1e-3:
             image = obj.image
         else:
-            width = max(1, int(round(obj.image.get_width() * self.zoom)))
-            height = max(1, int(round(obj.image.get_height() * self.zoom)))
-            image = pygame.transform.smoothscale(obj.image, (width, height))
+            source = getattr(obj, "hi_res_image", obj.base_image)
+            source_scale = float(getattr(obj, "hi_res_scale", 1.0))
+            width = max(1, int(round(source.get_width() * (total_scale / source_scale))))
+            height = max(1, int(round(source.get_height() * (total_scale / source_scale))))
+            image = pygame.transform.smoothscale(source, (width, height))
         draw_rect = image.get_rect()
         draw_rect.topleft = (int(round(screen_position.x)), int(round(screen_position.y)))
         surface.blit(image, draw_rect)
+
+    def _draw_shadow_trail(self, surface: pygame.Surface, obj: GameObject) -> None:
+        """Render trailing motion shadows for *obj* if available."""
+
+        obj.update_shadow_history()
+        if not obj.shadow_trail:
+            return
+
+        current_time = pygame.time.get_ticks() / 1000.0
+        for position, scale, timestamp in obj.shadow_trail:
+            age = current_time - timestamp
+            if age < 0 or age > obj.SHADOW_LIFETIME:
+                continue
+
+            fade = max(0.0, min(1.0, 1.0 - age / obj.SHADOW_LIFETIME))
+            shadow_surface = obj.get_shadow_surface(scale)
+            if abs(self.zoom - 1.0) < 1e-3:
+                scaled_shadow = shadow_surface
+            else:
+                width = max(1, int(round(shadow_surface.get_width() * self.zoom)))
+                height = max(1, int(round(shadow_surface.get_height() * self.zoom)))
+                scaled_shadow = pygame.transform.smoothscale(
+                    shadow_surface, (width, height)
+                )
+
+            shadow_image = scaled_shadow.copy()
+            shadow_image.fill(
+                (255, 255, 255, int(round(255 * fade))),
+                special_flags=pygame.BLEND_RGBA_MULT,
+            )
+            screen_position = self._world_to_screen(position)
+            draw_rect = shadow_image.get_rect()
+            draw_rect.topleft = (
+                int(round(screen_position.x)),
+                int(round(screen_position.y)),
+            )
+            surface.blit(shadow_image, draw_rect)
 
     def _snap_object_to_grid(self, obj: GameObject) -> None:
         """Snap *obj* to the nearest grid coordinate, respecting its span."""
