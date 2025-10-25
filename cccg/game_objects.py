@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import ClassVar, Tuple
+from random import shuffle
+from typing import ClassVar, Iterable, Tuple
 
 import pygame
 
@@ -167,9 +168,12 @@ class DeckSprite(GameObject):
     DECK_SIZE = CardSprite.CARD_SIZE
     GRID_SPAN: ClassVar[tuple[int, int]] = (2, 3)
 
-    def __init__(self, position: tuple[int, int]) -> None:
+    def __init__(self, position: tuple[int, int], cards: Iterable[str] | None = None) -> None:
         image = self._create_deck_surface()
         super().__init__(image=image, position=position)
+        if cards is None:
+            cards = self._build_standard_deck()
+        self.cards: list[str] = list(cards)
 
     @staticmethod
     def _create_deck_surface() -> pygame.Surface:
@@ -249,3 +253,20 @@ class DeckSprite(GameObject):
         )
 
         return surface
+
+    @staticmethod
+    def _build_standard_deck() -> list[str]:
+        values = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+        suits = ["♠", "♥", "♦", "♣"]
+        cards = [f"{value}{suit}" for suit in suits for value in values]
+        cards.extend(["Joker", "Joker"])
+        shuffle(cards)
+        return cards
+
+    def draw_card(self) -> str | None:
+        if not self.cards:
+            return None
+        return self.cards.pop()
+
+    def is_empty(self) -> bool:
+        return not self.cards
