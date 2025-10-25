@@ -21,6 +21,7 @@ class CardGameApp:
         self.objects: list[GameObject] = []
         self.dragged_object: GameObject | None = None
         self.drag_offset = pygame.Vector2()
+        self.drag_scale = 1.15
 
     def setup(self) -> None:
         """Initialise pygame and the display surface."""
@@ -92,6 +93,8 @@ class CardGameApp:
                 self.drag_offset = pointer - pygame.Vector2(candidate.rect.topleft)
                 # bring to front for rendering
                 self.objects.append(self.objects.pop(index))
+                candidate.set_scale(self.drag_scale)
+                self.drag_offset = pointer - pygame.Vector2(candidate.rect.topleft)
                 self._drag_object(pointer)
                 break
 
@@ -101,7 +104,9 @@ class CardGameApp:
         if self.dragged_object is None:
             return
         new_position = pointer - self.drag_offset
-        self.dragged_object.rect.topleft = (int(new_position.x), int(new_position.y))
+        top_left = (int(new_position.x), int(new_position.y))
+        self.dragged_object.rect.topleft = top_left
+        self.dragged_object.position = top_left
 
     def _end_drag(self, pointer: pygame.Vector2) -> None:
         """Release the currently dragged object, if any."""
@@ -109,6 +114,7 @@ class CardGameApp:
         if self.dragged_object is None:
             return
         self._drag_object(pointer)
+        self.dragged_object.set_scale(1.0)
         self.dragged_object = None
 
     def run(self) -> None:

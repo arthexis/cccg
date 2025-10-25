@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple
 
 import pygame
@@ -17,12 +17,35 @@ class GameObject:
 
     image: pygame.Surface
     position: tuple[int, int]
+    scale: float = 1.0
+    base_image: pygame.Surface = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self.base_image = self.image.copy()
+        self.scale = float(self.scale)
         self.rect = self.image.get_rect(topleft=self.position)
 
     def draw(self, surface: pygame.Surface) -> None:
         surface.blit(self.image, self.rect)
+
+    def set_scale(self, scale: float) -> None:
+        """Update the sprite scale while keeping its top-left anchored."""
+
+        scale = max(scale, 0.01)
+        if abs(scale - self.scale) < 1e-3:
+            return
+
+        old_topleft = self.rect.topleft
+        self.scale = scale
+        if abs(scale - 1.0) < 1e-3:
+            self.image = self.base_image.copy()
+        else:
+            width = max(1, int(round(self.base_image.get_width() * scale)))
+            height = max(1, int(round(self.base_image.get_height() * scale)))
+            self.image = pygame.transform.smoothscale(self.base_image, (width, height))
+        self.rect = self.image.get_rect()
+        self.rect.topleft = old_topleft
+        self.position = self.rect.topleft
 
 
 CARD_PADDING = 6
@@ -154,30 +177,15 @@ class DeckSprite(GameObject):
         border_radius = 16
         card_rect = outer_rect.inflate(-2 * CARD_PADDING, -2 * CARD_PADDING)
 
-        stack_layers = 3
-        offset_step = 5
-        stack_color: Color = (100, 0, 0)
-        stack_border: Color = (40, 0, 0)
-        for depth in range(stack_layers, 0, -1):
-            offset = depth * offset_step
-            layer_rect = card_rect.move(offset, -offset)
-            layer_rect.width = max(layer_rect.width - offset, 12)
-            layer_rect.height = max(layer_rect.height - offset, 12)
-            layer_rect = layer_rect.clip(outer_rect)
-            if layer_rect.width <= 0 or layer_rect.height <= 0:
-                continue
-            layer_radius = max(border_radius - depth * 2, 4)
-            pygame.draw.rect(surface, stack_color, layer_rect, border_radius=layer_radius)
-            pygame.draw.rect(
-                surface,
-                stack_border,
-                layer_rect,
-                width=2,
-                border_radius=layer_radius,
-            )
-
         base_color: Color = (120, 0, 0)
         pygame.draw.rect(surface, base_color, card_rect, border_radius=border_radius)
+
+        edge_color: Color = (160, 30, 30)
+        edge_spacing = 6
+        edge_height = 3
+        for offset in range(edge_spacing, min(5 * edge_spacing, card_rect.height // 2), edge_spacing):
+            edge_rect = pygame.Rect(card_rect.left + 8, card_rect.top + offset, card_rect.width - 16, edge_height)
+            pygame.draw.rect(surface, edge_color, edge_rect, border_radius=1)
 
         inner_rect = card_rect.inflate(-18, -18)
         gradient_surface = pygame.Surface(inner_rect.size, pygame.SRCALPHA)
