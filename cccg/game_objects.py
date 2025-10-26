@@ -138,6 +138,8 @@ class CardSprite(GameObject):
         self.label = label
         self.hi_res_image = hi_res_image
         self.hi_res_scale = float(self.RENDER_SCALE)
+        self.in_hand = False
+        self.hand_hovered = False
 
     @staticmethod
     def _create_card_surface(label: str, scale: int = 1) -> pygame.Surface:
