@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from random import shuffle
+from random import randrange, shuffle
 from typing import ClassVar, Iterable, Tuple
 
 import pygame
@@ -330,3 +330,13 @@ class DeckSprite(GameObject):
 
     def is_empty(self) -> bool:
         return not self.cards
+
+    def shuffle_in_card(self, label: str) -> None:
+        """Insert *label* back into the deck at a random position."""
+
+        if not self.cards:
+            self.cards.append(label)
+            return
+
+        index = randrange(len(self.cards) + 1)
+        self.cards.insert(index, label)

@@ -28,6 +28,7 @@ class CardGameApp:
         self.objects: list[GameObject] = []
         self.dragged_object: GameObject | None = None
         self.drag_offset = pygame.Vector2()
+        self.drag_start_position: pygame.Vector2 | None = None
         self.drag_scale = 1.30
         self.zoom = 1.0
         self.min_zoom = 0.25
@@ -77,7 +78,7 @@ class CardGameApp:
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pointer_world = self._screen_to_world(pygame.Vector2(event.pos))
                 clicked_object = self._find_top_object(pointer_world)
-                if self._handle_control_double_click(clicked_object):
+                if self._handle_control_draw(pointer_world, clicked_object):
                     continue
                 self._record_pointer_click(clicked_object)
                 if not self._begin_drag(pointer_world):
@@ -151,14 +152,13 @@ class CardGameApp:
         self.last_clicked_object = None
         self.last_click_time = 0
 
-    def _handle_control_double_click(self, clicked_object: GameObject | None) -> bool:
-        """Trigger a deck draw when control + double click is detected."""
+    def _handle_control_draw(
+        self, pointer: pygame.Vector2, clicked_object: GameObject | None
+    ) -> bool:
+        """Draw a card from the deck when control is held during a click."""
 
         if clicked_object is None:
             return False
-
-        if self.last_clicked_object is not None and self.last_clicked_object not in self.objects:
-            self._reset_click_tracker()
 
         if not isinstance(clicked_object, DeckSprite):
             return False
@@ -169,16 +169,16 @@ class CardGameApp:
         if not (pygame.key.get_mods() & pygame.KMOD_CTRL):
             return False
 
-        now = pygame.time.get_ticks()
-        if (
-            self.last_clicked_object is clicked_object
-            and 0 < now - self.last_click_time <= self.double_click_threshold_ms
-        ):
-            self._spawn_card_from_deck(clicked_object)
-            self._reset_click_tracker()
-            return True
+        new_card = self._spawn_card_from_deck(clicked_object)
+        if new_card is None:
+            return False
 
-        return False
+        self.dragged_object = new_card
+        self.drag_start_position = pygame.Vector2(new_card.rect.topleft)
+        new_card.set_scale(self.drag_scale)
+        self.drag_offset = pygame.Vector2(new_card.rect.width / 2, new_card.rect.height / 2)
+        self._drag_object(pointer)
+        return True
 
     def _handle_escape_press(self) -> None:
         """Center the camera on the deck when escape is pressed twice."""
@@ -203,20 +203,20 @@ class CardGameApp:
             self.camera_center = pygame.Vector2(0, 0)
         self.pan_active = False
 
-    def _spawn_card_from_deck(self, deck: DeckSprite) -> bool:
+    def _spawn_card_from_deck(self, deck: DeckSprite) -> CardSprite | None:
         """Draw a card from *deck* and spawn it if space is available."""
 
         if deck is None:
-            return False
+            return None
 
         position = self._find_free_card_position(deck)
         if position is None:
-            return False
+            return None
 
         card_label = deck.draw_card()
         if card_label is None:
             self._remove_deck(deck)
-            return False
+            return None
 
         new_card = CardSprite(card_label, position=position)
         self._snap_object_to_grid(new_card)
@@ -225,7 +225,7 @@ class CardGameApp:
         if deck.is_empty():
             self._remove_deck(deck)
 
-        return True
+        return new_card
 
     def _remove_deck(self, deck: DeckSprite) -> None:
         """Remove *deck* from the scene and clear references."""
@@ -237,7 +237,9 @@ class CardGameApp:
         if self.last_clicked_object is deck:
             self._reset_click_tracker()
 
-    def _find_free_card_position(self, deck: DeckSprite) -> tuple[int, int] | None:
+    def _find_free_card_position(
+        self, deck: DeckSprite, *, ignore: tuple[GameObject, ...] | list[GameObject] = ()
+    ) -> tuple[int, int] | None:
         """Locate a nearby free grid position for a card next to *deck*."""
 
         cell = self.GRID_CELL_SIZE
@@ -275,6 +277,8 @@ class CardGameApp:
             for obj in self.objects:
                 if obj is deck:
                     continue
+                if obj in ignore:
+                    continue
                 if card_rect.colliderect(obj.rect):
                     collision = True
                     break
@@ -311,6 +315,7 @@ class CardGameApp:
             candidate = self.objects[index]
             if candidate.rect.collidepoint(pointer.x, pointer.y):
                 self.dragged_object = candidate
+                self.drag_start_position = pygame.Vector2(candidate.rect.topleft)
                 self.drag_offset = pointer - pygame.Vector2(candidate.rect.topleft)
                 # bring to front for rendering
                 self.objects.append(self.objects.pop(index))
@@ -337,10 +342,18 @@ class CardGameApp:
 
         if self.dragged_object is None:
             return
+        obj = self.dragged_object
         self._drag_object(pointer)
-        self.dragged_object.set_scale(1.0)
-        self._snap_object_to_grid(self.dragged_object)
+        obj.set_scale(1.0)
+        self._snap_object_to_grid(obj)
         self.dragged_object = None
+
+        if isinstance(obj, CardSprite):
+            self._handle_card_drop(obj)
+        elif isinstance(obj, DeckSprite):
+            self._handle_deck_drop(obj)
+
+        self.drag_start_position = None
 
     def _begin_pan(self, screen_position: pygame.Vector2) -> None:
         """Start panning the camera following the pointer."""
@@ -362,6 +375,51 @@ class CardGameApp:
         """Stop panning the camera."""
 
         self.pan_active = False
+
+    def _handle_card_drop(self, card: CardSprite) -> None:
+        """Ensure dropped cards do not block the deck."""
+
+        deck = self.deck_sprite
+        if deck is None or deck not in self.objects:
+            return
+
+        if not card.rect.colliderect(deck.rect):
+            return
+
+        new_position = self._find_free_card_position(deck, ignore=(card,))
+        if new_position is None:
+            if self.drag_start_position is not None:
+                original = (
+                    int(round(self.drag_start_position.x)),
+                    int(round(self.drag_start_position.y)),
+                )
+                card.rect.topleft = original
+                card.position = original
+                self._snap_object_to_grid(card)
+            return
+
+        card.rect.topleft = new_position
+        card.position = new_position
+        self._snap_object_to_grid(card)
+
+    def _handle_deck_drop(self, deck: DeckSprite) -> None:
+        """Return overlapping cards to the deck when it is dropped on them."""
+
+        removed_cards: list[CardSprite] = []
+        for obj in list(self.objects):
+            if not isinstance(obj, CardSprite):
+                continue
+            if obj.rect.colliderect(deck.rect):
+                deck.shuffle_in_card(obj.label)
+                removed_cards.append(obj)
+                self.objects.remove(obj)
+                if self.last_clicked_object is obj:
+                    self._reset_click_tracker()
+
+        if removed_cards:
+            # Ensure the deck remains tracked even if it was previously removed.
+            if self.deck_sprite is None:
+                self.deck_sprite = deck
 
     # Grid helpers -----------------------------------------------------
 
