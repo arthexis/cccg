@@ -11,6 +11,156 @@ from .game_objects import CardSprite, DeckSprite, GameObject
 from .resources import ResourceManager
 
 
+class HandZone:
+    """Screen-anchored holder for cards currently in the player's hand."""
+
+    LEFT_RIGHT_MARGIN_RATIO = 0.08
+    BOTTOM_MARGIN_RATIO = 0.03
+    ARC_HEIGHT_RATIO = 0.15
+    HOVER_LIFT_RATIO = 0.20
+    ZONE_HEIGHT_RATIO = 0.25
+    HOVER_SCALE = 1.5
+
+    def __init__(self) -> None:
+        self.cards: list[CardSprite] = []
+
+    def add_card(self, app: "CardGameApp", card: CardSprite) -> None:
+        """Add *card* to the hand if it is not already managed."""
+
+        if card in self.cards:
+            return
+        card.in_hand = True
+        card.hand_hovered = False
+        self.cards.append(card)
+        if card in app.objects:
+            app.objects.remove(card)
+            app.objects.append(card)
+        self.update(app)
+
+    def remove_card(self, app: "CardGameApp", card: CardSprite) -> None:
+        """Remove *card* from the hand if present."""
+
+        if card not in self.cards:
+            return
+        self.cards.remove(card)
+        card.in_hand = False
+        card.hand_hovered = False
+        if self.cards:
+            self.update(app)
+
+    def handle_drop(
+        self, app: "CardGameApp", card: CardSprite, pointer_screen: pygame.Vector2
+    ) -> bool:
+        """Place *card* into the hand when it touches the bottom of the screen."""
+
+        if app.screen is None:
+            return False
+
+        screen_width, screen_height = app.screen.get_size()
+        zone_top = screen_height * (1.0 - self.ZONE_HEIGHT_RATIO)
+        if pointer_screen.y >= zone_top:
+            self.add_card(app, card)
+            return True
+
+        card_screen_topleft = app._world_to_screen(pygame.Vector2(card.rect.topleft))
+        card_screen_rect = pygame.Rect(
+            int(round(card_screen_topleft.x)),
+            int(round(card_screen_topleft.y)),
+            card.image.get_width(),
+            card.image.get_height(),
+        )
+        bottom_margin = screen_height * self.BOTTOM_MARGIN_RATIO
+        if card_screen_rect.bottom >= screen_height - bottom_margin:
+            self.add_card(app, card)
+            return True
+
+        return False
+
+    def update(self, app: "CardGameApp") -> None:
+        """Arrange the cards in hand along a gentle arc at the bottom of the screen."""
+
+        if app.screen is None or not self.cards:
+            return
+
+        screen_width, screen_height = app.screen.get_size()
+        margin = screen_width * self.LEFT_RIGHT_MARGIN_RATIO
+        available_width = max(0.0, screen_width - 2 * margin)
+        base_bottom = screen_height * (1.0 - self.BOTTOM_MARGIN_RATIO)
+        arc_height = screen_height * self.ARC_HEIGHT_RATIO
+        hover_lift = screen_height * self.HOVER_LIFT_RATIO
+        pointer = pygame.Vector2(pygame.mouse.get_pos())
+
+        count = len(self.cards)
+        if count == 1:
+            centers = [screen_width / 2.0]
+        elif count > 1:
+            step = available_width / (count - 1)
+            centers = [margin + step * index for index in range(count)]
+        else:
+            centers = []
+
+        hovered_index: int | None = None
+        if app.dragged_object is None:
+            for index, card in enumerate(self.cards):
+                normalized = 0.0 if count <= 1 else (index / (count - 1)) * 2.0 - 1.0
+                offset = arc_height * (1.0 - normalized**2)
+                base_rect = self._compute_screen_rect(
+                    centers[index], base_bottom - offset, card, 1.0
+                )
+                hover_rect = self._compute_screen_rect(
+                    centers[index], base_bottom - max(offset, hover_lift), card, self.HOVER_SCALE
+                )
+                if hover_rect.collidepoint(pointer):
+                    hovered_index = index
+                    break
+                if base_rect.collidepoint(pointer):
+                    hovered_index = index
+
+        for index, card in enumerate(self.cards):
+            if card is app.dragged_object:
+                continue
+            normalized = 0.0 if count <= 1 else (index / (count - 1)) * 2.0 - 1.0
+            offset = arc_height * (1.0 - normalized**2)
+            is_hovered = hovered_index == index
+            target_scale = self.HOVER_SCALE if is_hovered else 1.0
+            lift = max(offset, hover_lift) if is_hovered else offset
+            target_bottom = base_bottom - lift
+            target_screen_rect = self._compute_screen_rect(
+                centers[index], target_bottom, card, target_scale
+            )
+            target_world = app._screen_to_world(
+                pygame.Vector2(target_screen_rect.left, target_screen_rect.top)
+            )
+            if abs(card.scale - target_scale) > 1e-3:
+                card.set_scale(target_scale)
+            top_left = (int(round(target_world.x)), int(round(target_world.y)))
+            card.rect.topleft = top_left
+            card.position = top_left
+            card.in_hand = True
+            card.hand_hovered = is_hovered
+
+            if is_hovered and (not app.objects or app.objects[-1] is not card):
+                if card in app.objects:
+                    app.objects.remove(card)
+                    app.objects.append(card)
+
+    def _compute_screen_rect(
+        self, center_x: float, bottom_y: float, card: CardSprite, scale: float
+    ) -> pygame.Rect:
+        """Return the screen-space rectangle for *card* at *scale* anchored by bottom."""
+
+        width = card.base_image.get_width() * scale
+        height = card.base_image.get_height() * scale
+        left = center_x - width / 2.0
+        top = bottom_y - height
+        return pygame.Rect(
+            int(round(left)),
+            int(round(top)),
+            int(round(width)),
+            int(round(height)),
+        )
+
+
 class CardGameApp:
     """Minimal pygame wrapper that wires together the systems."""
 
@@ -26,6 +176,7 @@ class CardGameApp:
         self.clock: pygame.time.Clock | None = None
         self.running = False
         self.objects: list[GameObject] = []
+        self.hand_zone = HandZone()
         self.dragged_object: GameObject | None = None
         self.drag_offset = pygame.Vector2()
         self.drag_start_position: pygame.Vector2 | None = None
@@ -84,8 +235,9 @@ class CardGameApp:
                 if not self._begin_drag(pointer_world):
                     self._begin_pan(pygame.Vector2(event.pos))
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-                pointer_world = self._screen_to_world(pygame.Vector2(event.pos))
-                self._end_drag(pointer_world)
+                pointer_screen = pygame.Vector2(event.pos)
+                pointer_world = self._screen_to_world(pointer_screen)
+                self._end_drag(pointer_world, pointer_screen)
                 self._end_pan()
             elif event.type == pygame.MOUSEWHEEL:
                 self._adjust_zoom(event.y)
@@ -98,6 +250,8 @@ class CardGameApp:
             self._drag_object(pointer)
         elif self.pan_active:
             self._update_pan(pygame.Vector2(pygame.mouse.get_pos()))
+
+        self.hand_zone.update(self)
 
     def draw(self) -> None:
         """Render the current frame."""
@@ -314,6 +468,8 @@ class CardGameApp:
         for index in range(len(self.objects) - 1, -1, -1):
             candidate = self.objects[index]
             if candidate.rect.collidepoint(pointer.x, pointer.y):
+                if isinstance(candidate, CardSprite):
+                    self.hand_zone.remove_card(self, candidate)
                 self.dragged_object = candidate
                 self.drag_start_position = pygame.Vector2(candidate.rect.topleft)
                 self.drag_offset = pointer - pygame.Vector2(candidate.rect.topleft)
@@ -337,22 +493,35 @@ class CardGameApp:
         self.dragged_object.rect.topleft = top_left
         self.dragged_object.position = top_left
 
-    def _end_drag(self, pointer: pygame.Vector2) -> None:
+    def _end_drag(
+        self, pointer: pygame.Vector2, pointer_screen: pygame.Vector2 | None = None
+    ) -> None:
         """Release the currently dragged object, if any."""
 
         if self.dragged_object is None:
             return
         obj = self.dragged_object
         self._drag_object(pointer)
-        obj.set_scale(1.0)
-        self._snap_object_to_grid(obj)
-        self.dragged_object = None
+        if pointer_screen is None:
+            pointer_screen = self._world_to_screen(pointer)
 
         if isinstance(obj, CardSprite):
+            if self.hand_zone.handle_drop(self, obj, pointer_screen):
+                obj.set_scale(1.0)
+                self.dragged_object = None
+                self.drag_start_position = None
+                return
+            obj.set_scale(1.0)
+            self.hand_zone.remove_card(self, obj)
+            self._snap_object_to_grid(obj)
             self._handle_card_drop(obj)
-        elif isinstance(obj, DeckSprite):
-            self._handle_deck_drop(obj)
+        else:
+            obj.set_scale(1.0)
+            self._snap_object_to_grid(obj)
+            if isinstance(obj, DeckSprite):
+                self._handle_deck_drop(obj)
 
+        self.dragged_object = None
         self.drag_start_position = None
 
     def _begin_pan(self, screen_position: pygame.Vector2) -> None:
@@ -413,6 +582,7 @@ class CardGameApp:
                 deck.shuffle_in_card(obj.label)
                 removed_cards.append(obj)
                 self.objects.remove(obj)
+                self.hand_zone.remove_card(self, obj)
                 if self.last_clicked_object is obj:
                     self._reset_click_tracker()
 
