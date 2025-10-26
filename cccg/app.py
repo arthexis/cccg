@@ -15,11 +15,13 @@ class HandZone:
     """Screen-anchored holder for cards currently in the player's hand."""
 
     LEFT_RIGHT_MARGIN_RATIO = 0.08
-    BOTTOM_MARGIN_RATIO = 0.03
+    BOTTOM_MARGIN_RATIO = 0.0
     ARC_HEIGHT_RATIO = 0.15
     HOVER_LIFT_RATIO = 0.20
     ZONE_HEIGHT_RATIO = 0.25
-    HOVER_SCALE = 1.5
+    HAND_SCALE = 1.5
+    HOVER_SCALE_MULTIPLIER = 1.5
+    HANG_DEPTH_RATIO = 0.25
 
     def __init__(self) -> None:
         self.cards: list[CardSprite] = []
@@ -85,7 +87,7 @@ class HandZone:
         screen_width, screen_height = app.screen.get_size()
         margin = screen_width * self.LEFT_RIGHT_MARGIN_RATIO
         available_width = max(0.0, screen_width - 2 * margin)
-        base_bottom = screen_height * (1.0 - self.BOTTOM_MARGIN_RATIO)
+        bottom_margin_pixels = screen_height * self.BOTTOM_MARGIN_RATIO
         arc_height = screen_height * self.ARC_HEIGHT_RATIO
         hover_lift = screen_height * self.HOVER_LIFT_RATIO
         pointer = pygame.Vector2(pygame.mouse.get_pos())
@@ -104,11 +106,21 @@ class HandZone:
             for index, card in enumerate(self.cards):
                 normalized = 0.0 if count <= 1 else (index / (count - 1)) * 2.0 - 1.0
                 offset = arc_height * (1.0 - normalized**2)
-                base_rect = self._compute_screen_rect(
-                    centers[index], base_bottom - offset, card, 1.0
+                base_rect = self._compute_hand_rect(
+                    screen_height,
+                    centers[index],
+                    card,
+                    self.HAND_SCALE,
+                    bottom_margin_pixels,
+                    offset,
                 )
-                hover_rect = self._compute_screen_rect(
-                    centers[index], base_bottom - max(offset, hover_lift), card, self.HOVER_SCALE
+                hover_rect = self._compute_hand_rect(
+                    screen_height,
+                    centers[index],
+                    card,
+                    self.HAND_SCALE * self.HOVER_SCALE_MULTIPLIER,
+                    bottom_margin_pixels,
+                    max(offset, hover_lift),
                 )
                 if hover_rect.collidepoint(pointer):
                     hovered_index = index
@@ -122,11 +134,17 @@ class HandZone:
             normalized = 0.0 if count <= 1 else (index / (count - 1)) * 2.0 - 1.0
             offset = arc_height * (1.0 - normalized**2)
             is_hovered = hovered_index == index
-            target_scale = self.HOVER_SCALE if is_hovered else 1.0
+            target_scale = self.HAND_SCALE * (
+                self.HOVER_SCALE_MULTIPLIER if is_hovered else 1.0
+            )
             lift = max(offset, hover_lift) if is_hovered else offset
-            target_bottom = base_bottom - lift
-            target_screen_rect = self._compute_screen_rect(
-                centers[index], target_bottom, card, target_scale
+            target_screen_rect = self._compute_hand_rect(
+                screen_height,
+                centers[index],
+                card,
+                target_scale,
+                bottom_margin_pixels,
+                lift,
             )
             target_world = app._screen_to_world(
                 pygame.Vector2(target_screen_rect.left, target_screen_rect.top)
@@ -144,15 +162,22 @@ class HandZone:
                     app.objects.remove(card)
                     app.objects.append(card)
 
-    def _compute_screen_rect(
-        self, center_x: float, bottom_y: float, card: CardSprite, scale: float
+    def _compute_hand_rect(
+        self,
+        screen_height: int,
+        center_x: float,
+        card: CardSprite,
+        scale: float,
+        bottom_margin: float,
+        lift: float,
     ) -> pygame.Rect:
-        """Return the screen-space rectangle for *card* at *scale* anchored by bottom."""
+        """Return the screen-space rectangle for a hand card with hanging offset."""
 
         width = card.base_image.get_width() * scale
         height = card.base_image.get_height() * scale
+        bottom = screen_height + height * self.HANG_DEPTH_RATIO - bottom_margin - lift
+        top = bottom - height
         left = center_x - width / 2.0
-        top = bottom_y - height
         return pygame.Rect(
             int(round(left)),
             int(round(top)),
@@ -507,7 +532,7 @@ class CardGameApp:
 
         if isinstance(obj, CardSprite):
             if self.hand_zone.handle_drop(self, obj, pointer_screen):
-                obj.set_scale(1.0)
+                obj.set_scale(self.hand_zone.HAND_SCALE)
                 self.dragged_object = None
                 self.drag_start_position = None
                 return
