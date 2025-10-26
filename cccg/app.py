@@ -502,19 +502,21 @@ class CardGameApp:
             return
         obj = self.dragged_object
         self._drag_object(pointer)
-        obj.set_scale(1.0)
         if pointer_screen is None:
             pointer_screen = self._world_to_screen(pointer)
 
         if isinstance(obj, CardSprite):
             if self.hand_zone.handle_drop(self, obj, pointer_screen):
+                obj.set_scale(1.0)
                 self.dragged_object = None
                 self.drag_start_position = None
                 return
+            obj.set_scale(1.0)
             self.hand_zone.remove_card(self, obj)
             self._snap_object_to_grid(obj)
             self._handle_card_drop(obj)
         else:
+            obj.set_scale(1.0)
             self._snap_object_to_grid(obj)
             if isinstance(obj, DeckSprite):
                 self._handle_deck_drop(obj)
