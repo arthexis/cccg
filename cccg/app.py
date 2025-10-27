@@ -23,7 +23,7 @@ class HandZone:
     ZONE_HEIGHT_RATIO = 0.25
     HAND_SCALE = 1.5
     HOVER_SCALE_MULTIPLIER = 1.5
-    HANG_DEPTH_RATIO = 0.25
+    HANG_DEPTH_RATIO = 0.40
 
     def __init__(self) -> None:
         self.cards: list[CardSprite] = []
