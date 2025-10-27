@@ -140,6 +140,8 @@ class CardSprite(GameObject):
         self.hi_res_scale = float(self.RENDER_SCALE)
         self.in_hand = False
         self.hand_hovered = False
+        self.amarre: "Amarre | None" = None
+        self.hand_screen_rect: pygame.Rect | None = None
 
     @staticmethod
     def _create_card_surface(label: str, scale: int = 1) -> pygame.Surface:
@@ -216,20 +218,23 @@ class DeckSprite(GameObject):
     RENDER_SCALE = CardSprite.RENDER_SCALE
 
     def __init__(self, position: tuple[int, int], cards: Iterable[str] | None = None) -> None:
-        image = self._create_deck_surface()
-        super().__init__(image=image, position=position)
         if cards is None:
             cards = self._build_standard_deck()
         self.cards: list[str] = list(cards)
+        image = self._create_deck_surface(card_count=len(self.cards))
+        super().__init__(image=image, position=position)
 
     @staticmethod
-    def _create_deck_surface(scale: int = 1) -> pygame.Surface:
+    def _create_deck_surface(*, card_count: int, scale: int = 1) -> pygame.Surface:
         width = DeckSprite.DECK_SIZE[0] * scale
-        height = DeckSprite.DECK_SIZE[1] * scale
+        thickness = max(0, card_count) * scale
+        base_height = DeckSprite.DECK_SIZE[1] * scale
+        height = base_height + max(thickness, scale)
         surface = pygame.Surface((width, height), pygame.SRCALPHA)
         surface.fill((0, 0, 0, 0))
 
-        outer_rect = surface.get_rect()
+        outer_rect = pygame.Rect(0, 0, width, base_height)
+        outer_rect.bottom = surface.get_height()
         border_radius = 16 * scale
         card_rect = outer_rect.inflate(-2 * CARD_PADDING * scale, -2 * CARD_PADDING * scale)
 
@@ -240,7 +245,8 @@ class DeckSprite(GameObject):
         edge_spacing = 6 * scale
         edge_height = 3 * scale
         horizontal_padding = 8 * scale
-        for offset in range(edge_spacing, min(5 * edge_spacing, card_rect.height // 2), edge_spacing):
+        max_offset = max(edge_spacing, min(5 * edge_spacing, card_rect.height // 2))
+        for offset in range(edge_spacing, max_offset, edge_spacing):
             edge_rect = pygame.Rect(
                 card_rect.left + horizontal_padding,
                 card_rect.top + offset,
@@ -253,9 +259,9 @@ class DeckSprite(GameObject):
         gradient_surface = pygame.Surface(inner_rect.size, pygame.SRCALPHA)
         top_color = pygame.Color(210, 60, 60)
         bottom_color = pygame.Color(90, 0, 0)
-        height = inner_rect.height or 1
+        gradient_height = inner_rect.height or 1
         for y in range(inner_rect.height):
-            ratio = y / (height - 1 or 1)
+            ratio = y / (gradient_height - 1 or 1)
             color = (
                 int(top_color.r + (bottom_color.r - top_color.r) * ratio),
                 int(top_color.g + (bottom_color.g - top_color.g) * ratio),
@@ -314,6 +320,35 @@ class DeckSprite(GameObject):
             border_radius=max(border_radius - 4 * scale, 0),
         )
 
+        side_height = max(thickness, scale)
+        if side_height:
+            side_rect = pygame.Rect(card_rect.left, outer_rect.bottom, card_rect.width, side_height)
+            side_color_top = pygame.Color(200, 180, 180)
+            side_color_bottom = pygame.Color(110, 60, 60)
+            for y in range(side_rect.height):
+                ratio = y / max(side_rect.height - 1, 1)
+                color = (
+                    int(side_color_top.r + (side_color_bottom.r - side_color_top.r) * ratio),
+                    int(side_color_top.g + (side_color_bottom.g - side_color_top.g) * ratio),
+                    int(side_color_top.b + (side_color_bottom.b - side_color_top.b) * ratio),
+                )
+                pygame.draw.line(
+                    surface,
+                    color,
+                    (side_rect.left, side_rect.top + y),
+                    (side_rect.right, side_rect.top + y),
+                )
+
+            stripe_color = pygame.Color(255, 255, 255, 70)
+            for offset in range(side_rect.top, side_rect.bottom, max(1, scale * 2)):
+                pygame.draw.line(
+                    surface,
+                    stripe_color,
+                    (side_rect.left, offset),
+                    (side_rect.right, offset),
+                    max(1, scale // 2 or 1),
+                )
+
         return surface
 
     @staticmethod
@@ -328,7 +363,9 @@ class DeckSprite(GameObject):
     def draw_card(self) -> str | None:
         if not self.cards:
             return None
-        return self.cards.pop()
+        card = self.cards.pop()
+        self._refresh_image()
+        return card
 
     def is_empty(self) -> bool:
         return not self.cards
@@ -338,7 +375,103 @@ class DeckSprite(GameObject):
 
         if not self.cards:
             self.cards.append(label)
-            return
+        else:
+            index = randrange(len(self.cards) + 1)
+            self.cards.insert(index, label)
+        self._refresh_image()
 
-        index = randrange(len(self.cards) + 1)
-        self.cards.insert(index, label)
+    def _refresh_image(self) -> None:
+        new_surface = self._create_deck_surface(card_count=len(self.cards))
+        old_topleft = self.rect.topleft
+        self.image = new_surface
+        self.base_image = new_surface.copy()
+        self.rect = self.image.get_rect(topleft=old_topleft)
+        self.position = self.rect.topleft
+
+
+class Amarre:
+    """Grouping helper that keeps stacked cards together."""
+
+    GRID_SPAN: ClassVar[tuple[int, int]] = CardSprite.GRID_SPAN
+
+    def __init__(self, cards: Iterable[CardSprite] | None = None) -> None:
+        self.cards: list[CardSprite] = []
+        self.rect = pygame.Rect((0, 0), CardSprite.CARD_SIZE)
+        self.position = self.rect.topleft
+        self.scale = 1.0
+        if cards:
+            for card in cards:
+                self.add_card(card)
+            self._update_from_primary()
+
+    def add_card(self, card: CardSprite) -> None:
+        if card.amarre is self:
+            return
+        if card.amarre is not None:
+            card.amarre.remove_card(card)
+        if not self.cards:
+            self.rect = card.rect.copy()
+            self.position = self.rect.topleft
+            self.scale = card.scale
+        card.amarre = self
+        card.in_hand = False
+        card.hand_screen_rect = None
+        card.set_scale(self.scale)
+        card.rect.topleft = self.rect.topleft
+        card.position = card.rect.topleft
+        self.cards.append(card)
+        self._update_from_primary()
+
+    def remove_card(self, card: CardSprite) -> bool:
+        if card not in self.cards:
+            return False
+        self.cards.remove(card)
+        card.amarre = None
+        card.set_scale(1.0)
+        if not self.cards:
+            return True
+        if len(self.cards) == 1:
+            remaining = self.cards[0]
+            remaining.amarre = None
+            remaining.set_scale(1.0)
+            self.cards.clear()
+            return True
+        self._update_from_primary()
+        return False
+
+    def _update_from_primary(self) -> None:
+        if not self.cards:
+            return
+        primary = self.cards[0]
+        self.rect = primary.rect.copy()
+        self.position = self.rect.topleft
+        for card in self.cards:
+            card.rect.topleft = self.rect.topleft
+            card.position = card.rect.topleft
+
+    def move_to(self, position: tuple[int, int]) -> None:
+        top_left = (int(position[0]), int(position[1]))
+        self.rect.topleft = top_left
+        self.position = self.rect.topleft
+        for card in self.cards:
+            card.rect.topleft = self.rect.topleft
+            card.position = card.rect.topleft
+
+    def set_scale(self, scale: float) -> None:
+        self.scale = scale
+        for card in self.cards:
+            card.set_scale(scale)
+        self._update_from_primary()
+
+    def capture_shadow_sample(self) -> None:
+        for card in self.cards:
+            card.capture_shadow_sample()
+
+    def bring_to_front(self, objects: list[GameObject]) -> None:
+        for card in self.cards:
+            if card in objects:
+                objects.remove(card)
+                objects.append(card)
+
+    def is_empty(self) -> bool:
+        return not self.cards

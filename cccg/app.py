@@ -6,8 +6,10 @@ import math
 
 import pygame
 
+from typing import Iterable
+
 from .config import GameConfig
-from .game_objects import CardSprite, DeckSprite, GameObject
+from .game_objects import Amarre, CardSprite, DeckSprite, GameObject
 from .resources import ResourceManager
 
 
@@ -31,8 +33,10 @@ class HandZone:
 
         if card in self.cards:
             return
+        app._detach_card_from_amarre(card)
         card.in_hand = True
         card.hand_hovered = False
+        card.hand_screen_rect = None
         self.cards.append(card)
         if card in app.objects:
             app.objects.remove(card)
@@ -47,6 +51,7 @@ class HandZone:
         self.cards.remove(card)
         card.in_hand = False
         card.hand_hovered = False
+        card.hand_screen_rect = None
         if self.cards:
             self.update(app)
 
@@ -56,6 +61,9 @@ class HandZone:
         """Place *card* into the hand when it touches the bottom of the screen."""
 
         if app.screen is None:
+            return False
+
+        if getattr(card, "amarre", None) is not None:
             return False
 
         screen_width, screen_height = app.screen.get_size()
@@ -146,6 +154,7 @@ class HandZone:
                 bottom_margin_pixels,
                 lift,
             )
+            card.hand_screen_rect = target_screen_rect
             target_world = app._screen_to_world(
                 pygame.Vector2(target_screen_rect.left, target_screen_rect.top)
             )
@@ -201,8 +210,9 @@ class CardGameApp:
         self.clock: pygame.time.Clock | None = None
         self.running = False
         self.objects: list[GameObject] = []
+        self.amarres: list[Amarre] = []
         self.hand_zone = HandZone()
-        self.dragged_object: GameObject | None = None
+        self.dragged_object: GameObject | Amarre | None = None
         self.drag_offset = pygame.Vector2()
         self.drag_start_position: pygame.Vector2 | None = None
         self.drag_scale = 1.30
@@ -241,6 +251,7 @@ class CardGameApp:
         self.clock = pygame.time.Clock()
         self.running = True
         self._create_initial_objects()
+        self.hand_zone.update(self)
 
     def handle_events(self) -> None:
         """Consume pygame events."""
@@ -494,6 +505,20 @@ class CardGameApp:
             candidate = self.objects[index]
             if candidate.rect.collidepoint(pointer.x, pointer.y):
                 if isinstance(candidate, CardSprite):
+                    group = candidate.amarre
+                    if group is not None and not (pygame.key.get_mods() & pygame.KMOD_CTRL):
+                        self.dragged_object = group
+                        self.drag_start_position = pygame.Vector2(group.rect.topleft)
+                        self.drag_offset = pointer - pygame.Vector2(group.rect.topleft)
+                        group.bring_to_front(self.objects)
+                        group.set_scale(self.drag_scale)
+                        self.drag_offset = pointer - pygame.Vector2(group.rect.topleft)
+                        self._drag_object(pointer)
+                        return True
+                    if group is not None and pygame.key.get_mods() & pygame.KMOD_CTRL:
+                        removed = group.remove_card(candidate)
+                        if removed:
+                            self._remove_amarre(group)
                     self.hand_zone.remove_card(self, candidate)
                 self.dragged_object = candidate
                 self.drag_start_position = pygame.Vector2(candidate.rect.topleft)
@@ -512,11 +537,15 @@ class CardGameApp:
 
         if self.dragged_object is None:
             return
-        self.dragged_object.capture_shadow_sample()
+        obj = self.dragged_object
+        obj.capture_shadow_sample()
         new_position = pointer - self.drag_offset
         top_left = (int(new_position.x), int(new_position.y))
-        self.dragged_object.rect.topleft = top_left
-        self.dragged_object.position = top_left
+        if isinstance(obj, Amarre):
+            obj.move_to(top_left)
+        else:
+            obj.rect.topleft = top_left
+            obj.position = top_left
 
     def _end_drag(
         self, pointer: pygame.Vector2, pointer_screen: pygame.Vector2 | None = None
@@ -540,6 +569,12 @@ class CardGameApp:
             self.hand_zone.remove_card(self, obj)
             self._snap_object_to_grid(obj)
             self._handle_card_drop(obj)
+            self._evaluate_amarres_after_drop([obj])
+        elif isinstance(obj, Amarre):
+            obj.set_scale(1.0)
+            self._snap_object_to_grid(obj)
+            obj.move_to(obj.rect.topleft)
+            self._handle_amarre_drop(obj)
         else:
             obj.set_scale(1.0)
             self._snap_object_to_grid(obj)
@@ -605,6 +640,7 @@ class CardGameApp:
                 continue
             if obj.rect.colliderect(deck.rect):
                 deck.shuffle_in_card(obj.label)
+                self._detach_card_from_amarre(obj)
                 removed_cards.append(obj)
                 self.objects.remove(obj)
                 self.hand_zone.remove_card(self, obj)
@@ -615,6 +651,106 @@ class CardGameApp:
             # Ensure the deck remains tracked even if it was previously removed.
             if self.deck_sprite is None:
                 self.deck_sprite = deck
+
+    def _handle_amarre_drop(self, group: Amarre) -> None:
+        """Re-evaluate card stacks after an amarre is released."""
+
+        if group.is_empty():
+            self._remove_amarre(group)
+            return
+
+        anchor = group.cards[0] if group.cards else None
+        if anchor is not None:
+            before = anchor.rect.topleft
+            self._handle_card_drop(anchor)
+            if anchor.rect.topleft != before:
+                group.move_to(anchor.rect.topleft)
+        self._evaluate_amarres_after_drop(group.cards)
+
+    def _evaluate_amarres_after_drop(self, cards: Iterable[CardSprite]) -> None:
+        """Update amarre membership for the provided *cards*."""
+
+        for card in list(cards):
+            if card not in self.objects or card.in_hand:
+                continue
+            partner = self._find_card_collision_partner(card)
+            if partner is not None:
+                self._join_cards_into_amarre(card, partner)
+
+        for card in list(cards):
+            group = getattr(card, "amarre", None)
+            if group is None:
+                continue
+            if len(group.cards) < 2:
+                self._remove_amarre(group)
+
+    def _join_cards_into_amarre(self, primary: CardSprite, other: CardSprite) -> None:
+        """Merge *primary* and *other* into a shared amarre."""
+
+        if primary.in_hand or other.in_hand:
+            return
+
+        target_group = other.amarre
+        primary_group = primary.amarre
+
+        if target_group is None and primary_group is None:
+            new_group = Amarre([other, primary])
+            self.amarres.append(new_group)
+            target_group = new_group
+        elif target_group is None and primary_group is not None:
+            primary_group.add_card(other)
+            target_group = primary_group
+        elif target_group is not None and primary_group is None:
+            target_group.add_card(primary)
+        elif target_group is not None and primary_group is not None:
+            if target_group is primary_group:
+                target_group.move_to(target_group.rect.topleft)
+                return
+            for card in list(primary_group.cards):
+                target_group.add_card(card)
+            self._remove_amarre(primary_group)
+
+        if target_group is None:
+            return
+
+        if target_group not in self.amarres:
+            self.amarres.append(target_group)
+
+        anchor = target_group.cards[0].rect.topleft if target_group.cards else primary.rect.topleft
+        target_group.move_to(anchor)
+        target_group.set_scale(1.0)
+        target_group.bring_to_front(self.objects)
+
+    def _find_card_collision_partner(self, card: CardSprite) -> CardSprite | None:
+        """Return another card occupying the same space as *card* if any."""
+
+        for candidate in reversed(self.objects):
+            if not isinstance(candidate, CardSprite):
+                continue
+            if candidate is card:
+                continue
+            if candidate.in_hand:
+                continue
+            if card.rect.colliderect(candidate.rect):
+                return candidate
+        return None
+
+    def _detach_card_from_amarre(self, card: CardSprite) -> None:
+        """Remove *card* from its amarre if it is part of one."""
+
+        group = getattr(card, "amarre", None)
+        if group is None:
+            return
+        if group.remove_card(card):
+            self._remove_amarre(group)
+
+    def _remove_amarre(self, group: Amarre) -> None:
+        """Drop *group* from tracking and detach any remaining cards."""
+
+        if group in self.amarres:
+            self.amarres.remove(group)
+        for member in list(group.cards):
+            group.remove_card(member)
 
     # Grid helpers -----------------------------------------------------
 
@@ -698,6 +834,18 @@ class CardGameApp:
         """Draw *obj* onto *surface* accounting for the current zoom."""
 
         self._draw_shadow_trail(surface, obj)
+
+        if isinstance(obj, CardSprite) and obj.in_hand:
+            if obj.hand_screen_rect is not None:
+                screen_position = pygame.Vector2(obj.hand_screen_rect.topleft)
+            else:
+                screen_position = self._world_to_screen(pygame.Vector2(obj.rect.topleft))
+            image = obj.image
+            draw_rect = image.get_rect()
+            draw_rect.topleft = (int(round(screen_position.x)), int(round(screen_position.y)))
+            surface.blit(image, draw_rect)
+            return
+
         world_position = pygame.Vector2(obj.rect.topleft)
         screen_position = self._world_to_screen(world_position)
         total_scale = obj.scale * self.zoom
