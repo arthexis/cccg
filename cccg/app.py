@@ -265,7 +265,7 @@ class CardGameApp:
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 pointer_world = self._screen_to_world(pygame.Vector2(event.pos))
                 clicked_object = self._find_top_object(pointer_world)
-                if self._handle_control_draw(pointer_world, clicked_object):
+                if self._handle_deck_click(pointer_world, clicked_object):
                     continue
                 self._record_pointer_click(clicked_object)
                 if not self._begin_drag(pointer_world):
@@ -342,10 +342,10 @@ class CardGameApp:
         self.last_clicked_object = None
         self.last_click_time = 0
 
-    def _handle_control_draw(
+    def _handle_deck_click(
         self, pointer: pygame.Vector2, clicked_object: GameObject | None
     ) -> bool:
-        """Draw a card from the deck when control is held during a click."""
+        """Handle clicking on the deck, drawing cards by default."""
 
         if clicked_object is None:
             return False
@@ -356,7 +356,7 @@ class CardGameApp:
         if self.deck_sprite is None or clicked_object is not self.deck_sprite:
             return False
 
-        if not (pygame.key.get_mods() & pygame.KMOD_CTRL):
+        if pygame.key.get_mods() & pygame.KMOD_CTRL:
             return False
 
         new_card = self._spawn_card_from_deck(clicked_object)
