@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
 
 import pygame
-
-from typing import Iterable
 
 from .config import GameConfig
 from .game_objects import Amarre, CardSprite, DeckSprite, GameObject
@@ -27,6 +28,18 @@ class HandZone:
 
     def __init__(self) -> None:
         self.cards: list[CardSprite] = []
+        self.bottom_margin_ratio = self.BOTTOM_MARGIN_RATIO
+        self.hang_depth_ratio = self.HANG_DEPTH_RATIO
+
+    def set_bottom_margin_ratio(self, value: float) -> None:
+        """Adjust the vertical offset for the hand relative to the screen."""
+
+        self.bottom_margin_ratio = max(0.0, min(0.5, value))
+
+    def set_hang_depth_ratio(self, value: float) -> None:
+        """Adjust how far the cards extend below the screen edge."""
+
+        self.hang_depth_ratio = max(0.0, min(1.0, value))
 
     def add_card(self, app: "CardGameApp", card: CardSprite) -> None:
         """Add *card* to the hand if it is not already managed."""
@@ -95,7 +108,7 @@ class HandZone:
         screen_width, screen_height = app.screen.get_size()
         margin = screen_width * self.LEFT_RIGHT_MARGIN_RATIO
         available_width = max(0.0, screen_width - 2 * margin)
-        bottom_margin_pixels = screen_height * self.BOTTOM_MARGIN_RATIO
+        bottom_margin_pixels = screen_height * self.bottom_margin_ratio
         arc_height = screen_height * self.ARC_HEIGHT_RATIO
         hover_lift = screen_height * self.HOVER_LIFT_RATIO
         pointer = pygame.Vector2(pygame.mouse.get_pos())
@@ -184,7 +197,7 @@ class HandZone:
 
         width = card.base_image.get_width() * scale
         height = card.base_image.get_height() * scale
-        bottom = screen_height + height * self.HANG_DEPTH_RATIO - bottom_margin - lift
+        bottom = screen_height + height * self.hang_depth_ratio - bottom_margin - lift
         top = bottom - height
         left = center_x - width / 2.0
         return pygame.Rect(
@@ -193,6 +206,303 @@ class HandZone:
             int(round(width)),
             int(round(height)),
         )
+
+
+@dataclass
+class RuntimeConfigValues:
+    """Values that are persisted to ``config.env`` for runtime tweaks."""
+
+    hand_y_axis: float = HandZone.BOTTOM_MARGIN_RATIO
+    hand_z_axis: float = HandZone.HANG_DEPTH_RATIO
+
+
+class RuntimeConfigManager:
+    """Simple loader/saver for runtime configuration values."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.values = RuntimeConfigValues()
+
+    def load(self) -> None:
+        """Populate the configuration values from ``config.env`` if present."""
+
+        if not self.path.exists():
+            return
+
+        try:
+            content = self.path.read_text(encoding="utf-8")
+        except OSError:
+            return
+
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            key, _, raw_value = line.partition("=")
+            if not _:
+                continue
+            key = key.strip().upper()
+            value_text = raw_value.strip()
+            try:
+                value = float(value_text)
+            except ValueError:
+                continue
+            if key == "HAND_Y_AXIS":
+                self.values.hand_y_axis = value
+            elif key == "HAND_Z_AXIS":
+                self.values.hand_z_axis = value
+
+    def save(self) -> None:
+        """Persist the current configuration values to ``config.env``."""
+
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            content = "\n".join(
+                [
+                    f"HAND_Y_AXIS={self.values.hand_y_axis:.4f}",
+                    f"HAND_Z_AXIS={self.values.hand_z_axis:.4f}",
+                ]
+            )
+            if content:
+                content += "\n"
+            self.path.write_text(content, encoding="utf-8")
+        except OSError:
+            # Silently ignore persistence issues – the game can operate with defaults.
+            return
+
+
+class SliderControl:
+    """Interactive horizontal slider used by the runtime configuration UI."""
+
+    HANDLE_RADIUS = 8
+    TRACK_HEIGHT = 6
+
+    def __init__(
+        self,
+        label: str,
+        offset: tuple[int, int],
+        size: tuple[int, int],
+        value: float,
+        minimum: float,
+        maximum: float,
+        on_change,
+    ) -> None:
+        self.label = label
+        self.offset = pygame.Vector2(offset)
+        self.size = size
+        self.value = value
+        self.minimum = minimum
+        self.maximum = maximum
+        self.on_change = on_change
+        self.rect = pygame.Rect(0, 0, *size)
+        self.active = False
+
+    def layout(self, panel_rect: pygame.Rect) -> None:
+        """Position the slider within *panel_rect*."""
+
+        self.rect = pygame.Rect(
+            panel_rect.left + int(self.offset.x),
+            panel_rect.top + int(self.offset.y),
+            self.size[0],
+            self.size[1],
+        )
+
+    def set_value(self, value: float, *, notify: bool = True) -> None:
+        """Set the slider value, optionally notifying observers."""
+
+        clamped = max(self.minimum, min(self.maximum, value))
+        if abs(clamped - self.value) > 1e-6:
+            self.value = clamped
+            if notify and self.on_change is not None:
+                self.on_change(self.value)
+
+    def release(self) -> None:
+        """Stop tracking pointer movement for this slider."""
+
+        self.active = False
+
+    def _update_from_position(self, x_position: float) -> None:
+        ratio = 0.0
+        if self.rect.width > 0:
+            ratio = (x_position - self.rect.left) / self.rect.width
+        ratio = max(0.0, min(1.0, ratio))
+        value = self.minimum + ratio * (self.maximum - self.minimum)
+        self.set_value(value)
+
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        """Consume pygame events that interact with the slider."""
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(event.pos):
+                self.active = True
+                self._update_from_position(event.pos[0])
+                return True
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.active:
+                self.active = False
+                return True
+        elif event.type == pygame.MOUSEMOTION and self.active:
+            self._update_from_position(event.pos[0])
+            return True
+        return False
+
+    def draw(self, surface: pygame.Surface, font: pygame.font.Font) -> None:
+        """Render the slider with its label and numeric value."""
+
+        label_surface = font.render(self.label, True, pygame.Color(220, 230, 240))
+        label_pos = (self.rect.left, self.rect.top - label_surface.get_height() - 4)
+        surface.blit(label_surface, label_pos)
+
+        track_rect = pygame.Rect(
+            self.rect.left,
+            self.rect.centery - self.TRACK_HEIGHT // 2,
+            self.rect.width,
+            self.TRACK_HEIGHT,
+        )
+        pygame.draw.rect(surface, pygame.Color(80, 110, 140), track_rect, border_radius=4)
+
+        ratio = 0.0
+        if self.maximum > self.minimum:
+            ratio = (self.value - self.minimum) / (self.maximum - self.minimum)
+        handle_x = int(self.rect.left + ratio * self.rect.width)
+        handle_center = (handle_x, track_rect.centery)
+        pygame.draw.circle(surface, pygame.Color(240, 240, 240), handle_center, self.HANDLE_RADIUS)
+        pygame.draw.circle(surface, pygame.Color(40, 60, 80), handle_center, self.HANDLE_RADIUS, 2)
+
+        value_surface = font.render(f"{self.value:.2f}", True, pygame.Color(220, 230, 240))
+        value_pos = (
+            self.rect.right + 12,
+            self.rect.centery - value_surface.get_height() // 2,
+        )
+        surface.blit(value_surface, value_pos)
+
+
+class ConfigOverlay:
+    """Modal configuration overlay with runtime-adjustable sliders."""
+
+    PANEL_MIN_WIDTH = 460
+    PANEL_HEIGHT = 220
+    PANEL_PADDING = 32
+
+    def __init__(self, app: "CardGameApp") -> None:
+        self.app = app
+        self.active = False
+        self.font: pygame.font.Font | None = None
+        self.panel_rect = pygame.Rect(0, 0, 0, 0)
+        self.sliders: list[SliderControl] = []
+        self._slider_lookup: dict[str, SliderControl] = {}
+        self._create_sliders()
+
+    def _ensure_font(self) -> pygame.font.Font:
+        if self.font is None:
+            if not pygame.font.get_init():
+                pygame.font.init()
+            self.font = pygame.font.SysFont("arial", 20)
+        return self.font
+
+    def _create_sliders(self) -> None:
+        values = self.app.config_manager.values
+        hand_y_slider = SliderControl(
+            "Hand Y Axis (Height)",
+            (self.PANEL_PADDING, 90),
+            (260, 32),
+            values.hand_y_axis,
+            0.0,
+            0.5,
+            self._on_hand_y_change,
+        )
+        hand_z_slider = SliderControl(
+            "Hand Z Axis (Depth)",
+            (self.PANEL_PADDING, 150),
+            (260, 32),
+            values.hand_z_axis,
+            0.0,
+            1.0,
+            self._on_hand_z_change,
+        )
+        self.sliders = [hand_y_slider, hand_z_slider]
+        self._slider_lookup = {
+            "hand_y_axis": hand_y_slider,
+            "hand_z_axis": hand_z_slider,
+        }
+
+    def _sync_from_config(self) -> None:
+        values = self.app.config_manager.values
+        self._slider_lookup["hand_y_axis"].set_value(values.hand_y_axis, notify=False)
+        self._slider_lookup["hand_z_axis"].set_value(values.hand_z_axis, notify=False)
+
+    def open(self) -> None:
+        self._sync_from_config()
+        self.active = True
+        for slider in self.sliders:
+            slider.release()
+
+    def close(self) -> None:
+        self.active = False
+        for slider in self.sliders:
+            slider.release()
+
+    def _update_layout(self) -> None:
+        if self.app.screen is None:
+            return
+        screen_width, screen_height = self.app.screen.get_size()
+        panel_width = min(max(self.PANEL_MIN_WIDTH, int(screen_width * 0.55)), screen_width - 80)
+        panel_width = max(panel_width, self.PANEL_MIN_WIDTH)
+        panel_left = (screen_width - panel_width) // 2
+        panel_top = (screen_height - self.PANEL_HEIGHT) // 2
+        self.panel_rect = pygame.Rect(panel_left, panel_top, panel_width, self.PANEL_HEIGHT)
+        for slider in self.sliders:
+            slider.layout(self.panel_rect)
+
+    def _on_hand_y_change(self, value: float) -> None:
+        self.app.set_hand_y_axis(value)
+
+    def _on_hand_z_change(self, value: float) -> None:
+        self.app.set_hand_z_axis(value)
+
+    def handle_event(self, event: pygame.event.Event) -> bool:
+        if not self.active:
+            return False
+        self._update_layout()
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.close()
+            return True
+        consumed = False
+        for slider in self.sliders:
+            if slider.handle_event(event):
+                consumed = True
+        return consumed
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if not self.active:
+            return
+        self._update_layout()
+        overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        surface.blit(overlay, (0, 0))
+
+        font = self._ensure_font()
+        panel_color = pygame.Color(24, 36, 48)
+        border_color = pygame.Color(80, 110, 140)
+        pygame.draw.rect(surface, panel_color, self.panel_rect, border_radius=12)
+        pygame.draw.rect(surface, border_color, self.panel_rect, width=2, border_radius=12)
+
+        title = font.render("Configuration", True, pygame.Color(220, 230, 240))
+        title_pos = (
+            self.panel_rect.left + self.PANEL_PADDING,
+            self.panel_rect.top + 32,
+        )
+        surface.blit(title, title_pos)
+
+        hint = font.render("Adjust values and press ESC to close", True, pygame.Color(160, 180, 200))
+        hint_pos = (
+            self.panel_rect.left + self.PANEL_PADDING,
+            title_pos[1] + title.get_height() + 4,
+        )
+        surface.blit(hint, hint_pos)
+
+        for slider in self.sliders:
+            slider.draw(surface, font)
 
 
 class CardGameApp:
@@ -212,6 +522,10 @@ class CardGameApp:
         self.objects: list[GameObject] = []
         self.amarres: list[Amarre] = []
         self.hand_zone = HandZone()
+        self.config_manager = RuntimeConfigManager(Path("config.env"))
+        self.config_manager.load()
+        self._apply_runtime_config()
+        self.config_overlay = ConfigOverlay(self)
         self.dragged_object: GameObject | Amarre | None = None
         self.drag_offset = pygame.Vector2()
         self.drag_start_position: pygame.Vector2 | None = None
@@ -259,6 +573,20 @@ class CardGameApp:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif (
+                event.type == pygame.KEYDOWN
+                and event.key == pygame.K_ESCAPE
+                and event.mod & pygame.KMOD_SHIFT
+            ):
+                if self.config_overlay.active:
+                    self.config_overlay.close()
+                else:
+                    self.config_overlay.open()
+                self.last_escape_press_time = 0
+                continue
+            elif self.config_overlay.active:
+                self.config_overlay.handle_event(event)
+                continue
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self._handle_escape_press()
@@ -281,6 +609,10 @@ class CardGameApp:
     def update(self, dt: float) -> None:  # noqa: D401 - placeholder hook
         """Advance the game state by *dt* seconds."""
 
+        if self.config_overlay.active:
+            self.hand_zone.update(self)
+            return
+
         if self.dragged_object is not None:
             pointer = self._screen_to_world(pygame.Vector2(pygame.mouse.get_pos()))
             self._drag_object(pointer)
@@ -298,7 +630,42 @@ class CardGameApp:
             self._draw_grid(self.screen)
         for obj in self.objects:
             self._draw_object(self.screen, obj)
+        if self.config_overlay.active:
+            self.config_overlay.draw(self.screen)
         pygame.display.flip()
+
+    def _apply_runtime_config(self) -> None:
+        """Apply configuration values loaded from disk to runtime systems."""
+
+        values = self.config_manager.values
+        self.hand_zone.set_bottom_margin_ratio(values.hand_y_axis)
+        self.hand_zone.set_hang_depth_ratio(values.hand_z_axis)
+        # Ensure stored values reflect any clamping performed by the setters.
+        self.config_manager.values.hand_y_axis = self.hand_zone.bottom_margin_ratio
+        self.config_manager.values.hand_z_axis = self.hand_zone.hang_depth_ratio
+
+    def _save_runtime_config(self) -> None:
+        """Persist the current runtime configuration safely."""
+
+        self.config_manager.save()
+
+    def set_hand_y_axis(self, value: float) -> None:
+        """Update the vertical offset for the player's hand."""
+
+        clamped = max(0.0, min(0.5, value))
+        self.config_manager.values.hand_y_axis = clamped
+        self.hand_zone.set_bottom_margin_ratio(clamped)
+        self.hand_zone.update(self)
+        self._save_runtime_config()
+
+    def set_hand_z_axis(self, value: float) -> None:
+        """Update how far the hand extends below the screen edge."""
+
+        clamped = max(0.0, min(1.0, value))
+        self.config_manager.values.hand_z_axis = clamped
+        self.hand_zone.set_hang_depth_ratio(clamped)
+        self.hand_zone.update(self)
+        self._save_runtime_config()
 
     # Internal helpers -------------------------------------------------
 
