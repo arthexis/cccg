@@ -114,11 +114,32 @@ class HandZone:
         pointer = pygame.Vector2(pygame.mouse.get_pos())
 
         count = len(self.cards)
+
+        base_scale = self.HAND_SCALE
+        if count:
+            base_width = self.cards[0].base_image.get_width()
+            if base_width > 0:
+                usable_width = screen_width - 2 * margin
+                max_scale_by_margin = usable_width / base_width if usable_width > 0 else 0.0
+                max_scale_by_spacing = available_width / (count * base_width) if count > 0 else 0.0
+                candidates = [self.HAND_SCALE]
+                if max_scale_by_margin > 0:
+                    candidates.append(max_scale_by_margin)
+                if max_scale_by_spacing > 0:
+                    candidates.append(max_scale_by_spacing)
+                base_scale = max(0.1, min(candidates))
+
+        card_width = self.cards[0].base_image.get_width() * base_scale if count else 0.0
+        half_width = card_width / 2.0
+
         if count == 1:
             centers = [screen_width / 2.0]
         elif count > 1:
-            step = available_width / (count - 1)
-            centers = [margin + step * index for index in range(count)]
+            start = margin + half_width
+            end = screen_width - margin - half_width
+            span = max(0.0, end - start)
+            step = span / (count - 1)
+            centers = [start + step * index for index in range(count)]
         else:
             centers = []
 
@@ -131,7 +152,7 @@ class HandZone:
                     screen_height,
                     centers[index],
                     card,
-                    self.HAND_SCALE,
+                    base_scale,
                     bottom_margin_pixels,
                     offset,
                 )
@@ -139,7 +160,7 @@ class HandZone:
                     screen_height,
                     centers[index],
                     card,
-                    self.HAND_SCALE * self.HOVER_SCALE_MULTIPLIER,
+                    base_scale * self.HOVER_SCALE_MULTIPLIER,
                     bottom_margin_pixels,
                     max(offset, hover_lift),
                 )
@@ -155,7 +176,7 @@ class HandZone:
             normalized = 0.0 if count <= 1 else (index / (count - 1)) * 2.0 - 1.0
             offset = arc_height * (1.0 - normalized**2)
             is_hovered = hovered_index == index
-            target_scale = self.HAND_SCALE * (
+            target_scale = base_scale * (
                 self.HOVER_SCALE_MULTIPLIER if is_hovered else 1.0
             )
             lift = max(offset, hover_lift) if is_hovered else offset
