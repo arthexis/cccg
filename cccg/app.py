@@ -494,13 +494,6 @@ class ConfigOverlay:
         )
         surface.blit(title, title_pos)
 
-        hint = font.render("Adjust values and press ESC to close", True, pygame.Color(160, 180, 200))
-        hint_pos = (
-            self.panel_rect.left + self.PANEL_PADDING,
-            title_pos[1] + title.get_height() + 4,
-        )
-        surface.blit(hint, hint_pos)
-
         for slider in self.sliders:
             slider.draw(surface, font)
 
