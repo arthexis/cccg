@@ -1,0 +1,128 @@
+﻿Objective:
+
+You win the game when you make all your opponents take all their Wounds before you do. 
+
+Setup:
+
+1. Shuffle the shared Fate deck.
+2. Deal 7 face down 'Wounds' to each player.
+3. Each player draws 5 from the Fate deck.
+4. Discarded cards go to the 'Void'.
+5. If Fate deck runs out, shuffle the Void into it.
+6. Randomly choose who has the Edge.
+7. Set an empty bag for challenges.
+8. Give colored power counters to each player.
+
+Objective:
+
+If a player is instructed to take a Wound, but their Wound deck is already depleted, they lose the game.
+
+The last player standing wins. If all the players lose at the same time somehow, its a draw.
+
+Gameplay:
+
+The player that receives the Edge takes the turn and may perform any of these five actions up to once:
+
+1. Tribute: You may sacrifice a Daemon you control. Put it in the Void.
+
+2. Free Summon: You can summon a Daemon from your hand. A Greater Daemon can only be brought to play if you sacrificed a Daemon this turn as your Tribute this turn (this is known as a Greater Summon. 
+
+2a. A Summon performed after a Tribute is always considered a Tribute Summon regardless of what you actually summon with it.)
+
+3. Tap for Power : Put counters in the challenge bag, equal to your Daemon's total Power. Tilt the Daemon card until the start of your next turn. 
+
+3a. You can tap a Daemon for Power the same turn it comes into play, unless another effect prevents this or makes it enter tapped. 
+
+3b. Tapping a Daemon for power is an action that can be taken in response to another action, such as a Spell or effect destroying it or forcing you to sacrifice it.
+
+4. Engage: You challenge an opponent. If you win this challenge, that opponent takes a Wound (the top one from their stack). If you lose, you take a Wound (from your own stack). 
+
+5. Free Draw: Draw a card. You can't do this and Attack at the same time on the first turn of the game (choose one or the other on the first turn.) 
+
+6. Dig Deeper: Search your wounds for a card and put it in your hand, then shuffle your wounds. This is usually considered a desperate move, but is sometimes necessary.
+
+7. End Turn: You must take this action if you can't or don't wanna do anything else. The next player (the one to their right, ie. in counter-clockwise order) takes the Edge.
+
+Spells:
+
+Before any step, players have a chance to cast spells from their hand, starting with the active player and going in turn order.
+
+Players can play any number of spells and they have no cost unless indicated by the card.
+
+Players can respond to spells with other spells of their own. Resolve them in reverse order (stack style). A player can respond to their own spell or to an opponent's. The effect of a spell could modify another spell or make it invalid. 
+
+For example, a spell may intend to destroy a Deamon. In response, its owner may cast a spell that allows them to sacrifice it for an effect. This causes the original spell that would destroy it to become invalid and fail. Paid costs are not refounded.
+
+Similarily a card may directly say that it counters another effect, negating it completely.
+
+While a spell or effect is being resolved, players cannot cast other spells or activate other effects, and must wait until the resolution is complete.
+
+Spells have a type indicated on each. The type has no mechanical effect, but may be refereced by the effects of other cards.
+
+Challenges: 
+
+To challenge an opponent, pull random counters from the challenge bag until you pull two of the same  color. The player whose color it is wins the challenge. The other player loses.
+
+Challenges can be used in the Attack step to make the opponent take Wounds, but may also be called on for other purposes as demanded by card effects. This means that there can be zero or more challenges per turn, but usually there is only one per turn. 
+
+Getting More Power:
+
+Some Daemon's abilities and Spells can grant you Power. When they do, put that many counters immediately into the bag.
+
+Rememeber that you can tap a Daemon for power right after playing them and/or right before Tributing them to Summon something better. Squeeze Power whenever you can...
+
+Ah! Note that some Daemons have effects that may trigger on an opponent's actions, don't miss them. Similarly, some spells you play during an opponent's turn may also generate Power, don't forget to add it in, every little bit counts!
+
+
+Multi-player:
+
+The following rules apply for more than two players.
+
+1. Passing the Edge
+
+When the player passes the Edge, they do so to the player to their left. 
+
+Because of how Hotseat works in Tabletop Simulator, it may be necessary to pass the turn back and forth to players for them to respond to their opponent's actions. Whenever this happens, the turn should always return to the player with the Edge at the end of resolution.
+
+When the Edge is passed to another player, the turn automatically passes to them as well.
+
+2. Reduced Wounds / Game Length
+
+For each additional player beyond the first, each player starts with 1 less Wound.
+
+So, start with 6 Wounds for 3 players, and 5 Wounds for 4 players.
+
+3. Initial Draw / Engage
+
+During the first turn, the first player can Draw an Engage at the same time (during the same turn) as long as they choose to Engage the next player in turn order instead of another player.
+
+4. Judgements
+
+If you draw the color of an opponent that is not taking place in the challenge, it becomes a Judgement. The opponent whose color was drawn becomes a Judge and sets a game, task or competition that the other players must complete. For example:
+
+* Discard the highest powered Daemon from your hand.
+* Search your Wounds for an Invocation spell and reveal it.
+* Each draw and reveal a card. First in alphabetical order wins.
+* Both players play an extra Summon and try the challenge again.
+
+
+Tabletop Simulator Implementation:
+
+Currently supports two players using colors white and black by default. I suggest picking the same colors for both players before loading the game scenario. 
+
+Triggers are not implemented automatically. Players should watch for when the triggers ocurr as part of the game and take the corresponding actions. Skipping a trigger is possible if both players forget about it (or let it pass without saying anything.)
+
+When using Hotseat to play, after playing a spell by putting it on the table (and if you don't have any self-response), pass the turn to each opponent so that they can check if they have any responses. 
+
+Once all responses are stacked, resolve them in reverse order by performing the requested actions manually and moving them from the table play area and into the Void. 
+
+TODO:
+
+* "Pass" button next to Edge Counter to increment and move to the other side of the table, and pass the turn automatically.
+
+* When card is placed on table create a Tap/Untap button under the card. Print "<Player> plays <cardname>."
+
+* Add "Take" Button below Wounds. Show a special red light effect on last Wound (when only 1 remains.)
+
+* Add a "Reset" Button and returns all cards from anywhere back into the deck and shuffles it. This should have a confirmation dialogue.
+

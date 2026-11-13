@@ -1,0 +1,181 @@
+﻿{
+    "version":  2.12,
+    "blueprint_id":  "17ad2454-e6a8-43a2-85a9-c44196cc2c30",
+    "name":  "Dark Magic Faithful Faces",
+    "layout_size":  "63.5, 88.9",
+    "layout_grid_size":  "0.232, 0.1653543",
+    "main_panel_id":  "00000000-0000-0000-0000-000000000000",
+    "front_layers":  [
+                         {
+                             "layer_id":  "4bec09b6-8cbb-433c-a427-4119219a844b",
+                             "name":  "Layer 01 Border",
+                             "padding":  0.0,
+                             "spacing":  0.0,
+                             "panels":  [
+                                            {
+                                                "panel_id":  "c84a072f-2656-4005-8cf9-85c197f882c5",
+                                                "name":  "",
+                                                "enabled":  true,
+                                                "locked":  false,
+                                                "rotation":  0,
+                                                "padding":  "0, 0, 0, 0",
+                                                "material_name":  "Blank",
+                                                "material_selection":  0,
+                                                "material_tint":  "#00000000",
+                                                "anchor_min":  "0, 0",
+                                                "anchor_min_render":  "0, 0",
+                                                "anchor_max":  "1, 1",
+                                                "anchor_max_render":  "1, 1",
+                                                "type":  "image",
+                                                "data":  {
+                                                             "uri":  "",
+                                                             "mask_uri":  "",
+                                                             "fit_mode":  "fit",
+                                                             "zoom":  1.0,
+                                                             "offset":  "0, 0",
+                                                             "tint":  "#292A30FF"
+                                                         },
+                                                "sort_mode":  "0",
+                                                "split_mode":  "none",
+                                                "parent_panel_id":  "00000000-0000-0000-0000-000000000000"
+                                            }
+                                        ]
+                         },
+                         {
+                             "layer_id":  "de65ad1c-132e-4adf-862d-32f12d916dcd",
+                             "name":  "Layer 02 Background",
+                             "padding":  0.07874016,
+                             "spacing":  0.0,
+                             "panels":  [
+                                            {
+                                                "panel_id":  "79003f32-f688-47f4-b498-e9938e16d016",
+                                                "name":  "",
+                                                "enabled":  true,
+                                                "locked":  false,
+                                                "rotation":  0,
+                                                "padding":  "0, 0, 0, 0",
+                                                "material_name":  "Blank",
+                                                "material_selection":  0,
+                                                "material_tint":  "#00000000",
+                                                "anchor_min":  "0, 0",
+                                                "anchor_min_render":  "0, 0",
+                                                "anchor_max":  "1, 1",
+                                                "anchor_max_render":  "1, 1",
+                                                "type":  "image",
+                                                "data":  {
+                                                             "uri":  "",
+                                                             "mask_uri":  "",
+                                                             "fit_mode":  "fit",
+                                                             "zoom":  1.0,
+                                                             "offset":  "0, 0",
+                                                             "tint":  "#E1E7F2FF"
+                                                         },
+                                                "sort_mode":  "1",
+                                                "split_mode":  "none",
+                                                "parent_panel_id":  "00000000-0000-0000-0000-000000000000"
+                                            }
+                                        ]
+                         },
+                         {
+                             "layer_id":  "83161b21-74f0-49d0-817e-267bbc03919f",
+                             "name":  "Layer 03 Content",
+                             "padding":  0.1574803,
+                             "spacing":  0.0,
+                             "panels":  [
+                                            {
+                                                "panel_id":  "8bf2f1ac-f273-4ddc-acd9-81f1f90b7ba4",
+                                                "name":  "",
+                                                "enabled":  true,
+                                                "locked":  false,
+                                                "rotation":  0,
+                                                "padding":  "0, 0, 0, 0",
+                                                "material_name":  "Blank",
+                                                "material_selection":  0,
+                                                "material_tint":  "#00000000",
+                                                "anchor_min":  "0, 0",
+                                                "anchor_min_render":  "0, 0",
+                                                "anchor_max":  "1, 0.8797659",
+                                                "anchor_max_render":  "1, 0.8797659",
+                                                "type":  "image",
+                                                "data":  {
+                                                             "uri":  "",
+                                                             "mask_uri":  "",
+                                                             "fit_mode":  "fit",
+                                                             "zoom":  1.0,
+                                                             "offset":  "0, 0",
+                                                             "tint":  "#FFFFFFFF"
+                                                         },
+                                                "sort_mode":  "2",
+                                                "split_mode":  "horizontal",
+                                                "parent_panel_id":  "00000000-0000-0000-0000-000000000000"
+                                            },
+                                            {
+                                                "panel_id":  "9937348e-cdef-4226-b6e8-5db16c2b11de",
+                                                "name":  "",
+                                                "enabled":  true,
+                                                "locked":  false,
+                                                "rotation":  0,
+                                                "padding":  "0, 0, 0, 0",
+                                                "material_name":  "Blank",
+                                                "material_selection":  0,
+                                                "material_tint":  "#00000000",
+                                                "anchor_min":  "0, 0.8797659",
+                                                "anchor_min_render":  "0, 0.8797659",
+                                                "anchor_max":  "1, 1",
+                                                "anchor_max_render":  "1, 1",
+                                                "type":  "text",
+                                                "data":  {
+                                                             "font_family":  "",
+                                                             "font_preferred_size":  26,
+                                                             "line_spacing":  1.0,
+                                                             "text_anchor":  "middlecenter",
+                                                             "text":  "",
+                                                             "color":  "#333333FF",
+                                                             "outline_length":  1.0,
+                                                             "outline_color":  "#FFFFFF00"
+                                                         },
+                                                "sort_mode":  "3",
+                                                "split_mode":  "horizontal",
+                                                "parent_panel_id":  "00000000-0000-0000-0000-000000000000"
+                                            }
+                                        ]
+                         }
+                     ],
+    "back_layers":  [
+                        {
+                            "layer_id":  "cbd26333-7aac-4197-b661-4562e955d0d5",
+                            "name":  "Layer 01 Back",
+                            "padding":  2.638507E-05,
+                            "spacing":  0.025,
+                            "panels":  [
+                                           {
+                                               "panel_id":  "287649dc-9d7a-4b22-928e-4dc0832dde12",
+                                               "name":  "",
+                                               "enabled":  true,
+                                               "locked":  false,
+                                               "rotation":  0,
+                                               "padding":  "0, 0, 0, 0",
+                                               "material_name":  "Blank",
+                                               "material_selection":  0,
+                                               "material_tint":  "#00000000",
+                                               "anchor_min":  "0, 0",
+                                               "anchor_min_render":  "0, 0",
+                                               "anchor_max":  "1, 1",
+                                               "anchor_max_render":  "1, 1",
+                                               "type":  "image",
+                                               "data":  {
+                                                            "uri":  "%PROJECT%/card-back.png",
+                                                            "mask_uri":  "",
+                                                            "fit_mode":  "fit",
+                                                            "zoom":  1.0,
+                                                            "offset":  "0, 0",
+                                                            "tint":  "#FFFFFFFF"
+                                                        },
+                                               "sort_mode":  "4",
+                                               "split_mode":  "none",
+                                               "parent_panel_id":  "00000000-0000-0000-0000-000000000000"
+                                           }
+                                       ]
+                        }
+                    ]
+}
